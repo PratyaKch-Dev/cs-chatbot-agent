@@ -15,3 +15,4 @@ Add a new file here each time something is updated — never edit old entries.
 |---|------|-------|------|-------|
 | [001](changes/001_initial_scaffold.md) | 2026-03-29 | Initial scaffold + PLAN.md | scaffold | pre-phase |
 | [002](changes/002_mock_llm_data_adjustments.md) | 2026-03-29 | Mock API, LLM providers, data merge adjustments | refactor + feature | pre-phase |
+| [003](changes/003_skills_setup.md) | 2026-03-30 | Skills setup & cleanup | config | pre-phase |
