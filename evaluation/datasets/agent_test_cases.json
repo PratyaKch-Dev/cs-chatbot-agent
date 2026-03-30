@@ -1,0 +1,32 @@
+[
+  {
+    "id": "agent-001",
+    "scenario": "Employee cannot withdraw — not enrolled",
+    "language": "th",
+    "employee_id": "EMP001",
+    "issue": "ถอนเงินไม่ได้ ขึ้นว่า not eligible",
+    "expected_tools": ["get_employee_status"],
+    "expected_diagnosis_contains": ["not_enrolled", "ลงทะเบียน"],
+    "tenant_id": "hns"
+  },
+  {
+    "id": "agent-002",
+    "scenario": "Employee asks about salary deduction",
+    "language": "th",
+    "employee_id": "EMP001",
+    "issue": "ทำไมเงินเดือนถูกหักเพิ่ม",
+    "expected_tools": ["get_salary_deductions", "get_attendance_records"],
+    "expected_diagnosis_contains": ["absent", "late", "หัก"],
+    "tenant_id": "hns"
+  },
+  {
+    "id": "agent-003",
+    "scenario": "Withdrawal limit not updated after sync",
+    "language": "th",
+    "employee_id": "EMP001",
+    "issue": "วงเงินถอนยังไม่อัปเดต ทั้งที่ทำงานมาแล้ว",
+    "expected_tools": ["get_sync_schedule", "get_employee_status"],
+    "expected_diagnosis_contains": ["sync", "ซิงค์"],
+    "tenant_id": "hns"
+  }
+]

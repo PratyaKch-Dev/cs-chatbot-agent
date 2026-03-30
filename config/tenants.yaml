@@ -1,0 +1,39 @@
+# Tenant configuration
+# Each tenant maps to a company using Salary Hero CS chatbot
+
+tenants:
+  hns:
+    name: "HNS Company"
+    company_id: "hns"
+    language_default: "th"
+    languages_supported:
+      - th
+      - en
+    line_channel_access_token: "${HNS_LINE_CHANNEL_ACCESS_TOKEN}"
+    line_channel_secret: "${HNS_LINE_CHANNEL_SECRET}"
+    vector_collections:
+      th: "hns_th"
+      en: "hns_en"
+    features:
+      withdrawal_diagnosis: true
+      troubleshooting_agent: true
+      human_handoff: true
+    handoff:
+      method: "line_transfer"       # line_transfer | webhook | email
+      contact_info: "HR Department"
+
+  # Template for adding new tenants
+  # example_company:
+  #   name: "Example Company"
+  #   company_id: "example_company"
+  #   language_default: "th"
+  #   languages_supported: [th, en]
+  #   line_channel_access_token: "${EXAMPLE_LINE_CHANNEL_ACCESS_TOKEN}"
+  #   line_channel_secret: "${EXAMPLE_LINE_CHANNEL_SECRET}"
+  #   vector_collections:
+  #     th: "example_company_th"
+  #     en: "example_company_en"
+  #   features:
+  #     withdrawal_diagnosis: true
+  #     troubleshooting_agent: false
+  #     human_handoff: true

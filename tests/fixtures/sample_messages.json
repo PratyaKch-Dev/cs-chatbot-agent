@@ -1,0 +1,62 @@
+[
+  {
+    "id": "msg-001",
+    "language": "th",
+    "intent": "greeting",
+    "text": "สวัสดีครับ"
+  },
+  {
+    "id": "msg-002",
+    "language": "th",
+    "intent": "question",
+    "text": "ถอนเงินได้กี่ครั้งต่อวัน"
+  },
+  {
+    "id": "msg-003",
+    "language": "th",
+    "intent": "question",
+    "text": "ทำไมถอนเงินไม่ได้"
+  },
+  {
+    "id": "msg-004",
+    "language": "th",
+    "intent": "question",
+    "text": "เงินเดือนทำไมหักเยอะขึ้น"
+  },
+  {
+    "id": "msg-005",
+    "language": "th",
+    "intent": "thanks",
+    "text": "ขอบคุณมากครับ"
+  },
+  {
+    "id": "msg-006",
+    "language": "th",
+    "intent": "goodbye",
+    "text": "ลาก่อนนะ"
+  },
+  {
+    "id": "msg-007",
+    "language": "en",
+    "intent": "greeting",
+    "text": "Hello!"
+  },
+  {
+    "id": "msg-008",
+    "language": "en",
+    "intent": "question",
+    "text": "How many times can I withdraw per day?"
+  },
+  {
+    "id": "msg-009",
+    "language": "th",
+    "intent": "frustrated",
+    "text": "ห่วยมาก ใช้งานไม่ได้เลย รำคาญมาก"
+  },
+  {
+    "id": "msg-010",
+    "language": "th",
+    "intent": "question",
+    "text": "วงเงินถอนยังไม่อัปเดต ทั้งที่ทำงานมาแล้วหลายวัน"
+  }
+]

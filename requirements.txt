@@ -1,0 +1,64 @@
+# Web framework
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+
+# LINE SDK
+line-bot-sdk==3.11.0
+
+# LangChain
+langchain==0.2.6
+langchain-community==0.2.6
+
+# LLM — Anthropic (default)
+anthropic==0.30.0
+langchain-anthropic==0.1.19
+
+# LLM — OpenAI (optional, Phase 8)
+openai==1.35.7
+langchain-openai==0.1.17
+
+# LLM — Google Gemini (optional, Phase 8)
+google-generativeai==0.7.2
+langchain-google-genai==1.0.7
+
+# Embeddings & Reranking
+sentence-transformers==3.0.1
+torch==2.3.1
+transformers==4.42.4
+
+# Vector DB
+qdrant-client==1.10.1
+pinecone-client==4.1.0
+
+# Redis
+redis==5.0.7
+
+# Thai language
+pythainlp==5.0.4
+langdetect==1.0.9
+
+# Data processing
+pandas==2.2.2
+pyyaml==6.0.1
+python-dotenv==1.0.1
+
+# Observability
+langsmith==0.1.83
+langfuse==2.36.1
+
+# Evaluation
+ragas==0.1.14
+
+# Test UI
+gradio==4.37.2
+
+# Testing
+pytest==8.2.2
+pytest-asyncio==0.23.7
+pytest-mock==3.14.0
+httpx==0.27.0
+
+# Utilities
+pydantic==2.8.2
+tenacity==8.4.2
+cachetools==5.3.3

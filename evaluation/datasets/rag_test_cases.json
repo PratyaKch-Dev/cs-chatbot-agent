@@ -1,0 +1,42 @@
+[
+  {
+    "id": "rag-001",
+    "language": "th",
+    "question": "ถอนเงินได้กี่ครั้งต่อวัน",
+    "expected_answer_contains": ["1 ครั้งต่อวัน", "3 ครั้งต่อเดือน"],
+    "expected_source_type": "faq",
+    "tenant_id": "hns"
+  },
+  {
+    "id": "rag-002",
+    "language": "th",
+    "question": "ลืมรหัสผ่านทำยังไง",
+    "expected_answer_contains": ["ลืมรหัสผ่าน", "เข้าสู่ระบบ"],
+    "expected_source_type": "faq",
+    "tenant_id": "hns"
+  },
+  {
+    "id": "rag-003",
+    "language": "th",
+    "question": "ถอนเงินได้กี่โมง",
+    "expected_answer_contains": ["08:00", "22:00"],
+    "expected_source_type": "faq",
+    "tenant_id": "hns"
+  },
+  {
+    "id": "rag-004",
+    "language": "en",
+    "question": "How many times can I withdraw per day?",
+    "expected_answer_contains": ["1 time", "per day"],
+    "expected_source_type": "faq",
+    "tenant_id": "hns"
+  },
+  {
+    "id": "rag-005",
+    "language": "th",
+    "question": "มีค่าธรรมเนียมการถอนไหม",
+    "expected_answer_contains": ["10 บาท", "ฟรี"],
+    "expected_source_type": "faq",
+    "tenant_id": "hns"
+  }
+]
