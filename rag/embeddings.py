@@ -7,23 +7,22 @@ Wraps SentenceTransformer with:
 """
 
 from functools import lru_cache
-from typing import Union
+from sentence_transformers import SentenceTransformer
 
 MODEL_NAME = "distiluse-base-multilingual-cased-v2"
-EMBEDDING_DIM = 384
+EMBEDDING_DIM = 512
 BATCH_SIZE = 16
 
-# TODO Phase 2: lazy-load model to avoid startup cost
-# from sentence_transformers import SentenceTransformer
-# _model: SentenceTransformer | None = None
+_model: SentenceTransformer | None = None
 
 
-def get_model():
-    """Lazy-load and return the SentenceTransformer model singleton.
-
-    TODO Phase 2: implement.
-    """
-    raise NotImplementedError("Phase 2")
+def get_model() -> SentenceTransformer:
+    """Lazy-load and return the SentenceTransformer model singleton."""
+    global _model
+    if _model is None:
+        print(f"Loading embedding model: {MODEL_NAME}")
+        _model = SentenceTransformer(MODEL_NAME)
+    return _model
 
 
 @lru_cache(maxsize=500)
@@ -31,19 +30,21 @@ def get_embedding_cached(text: str) -> tuple[float, ...]:
     """
     Embed a single query string with LRU caching.
     Returns a tuple (hashable) for cache compatibility.
-
-    TODO Phase 2: implement using get_model().
     """
-    raise NotImplementedError("Phase 2")
+    vector = get_model().encode([text], show_progress_bar=False, convert_to_numpy=True)
+    return tuple(vector[0].tolist())
 
 
 def embed_documents(texts: list[str]) -> list[list[float]]:
-    """
-    Embed a batch of documents (no cache — documents are indexed offline).
-
-    TODO Phase 2: implement batch encoding with BATCH_SIZE.
-    """
-    raise NotImplementedError("Phase 2")
+    """Embed a batch of documents (no cache — documents are indexed offline)."""
+    print(f"Encoding {len(texts)} documents...")
+    vectors = get_model().encode(
+        texts,
+        batch_size=BATCH_SIZE,
+        show_progress_bar=True,
+        convert_to_numpy=True,
+    )
+    return vectors.tolist()
 
 
 def embed_query(text: str) -> list[float]:

@@ -53,6 +53,18 @@ python indexers/merge_data.py
 python indexers/inspect_qdrant.py
 ```
 
+## Skills (Claude Code slash commands)
+
+| Skill | Use for |
+|-------|---------|
+| `/index` | Merge + push FAQs to Qdrant (first time or new data) |
+| `/index all` | Index all companies × both languages |
+| `/qdrant status` | See what collections exist in Qdrant |
+| `/qdrant reindex <company> <lang>` | Full refresh of a collection |
+| `/qdrant delete <company> <lang>` | Remove a collection |
+| `/qdrant add-tenant <name>` | Onboard a new company |
+| `/changelog` | Log changes after finishing a task |
+
 ## Conventions
 
 - Redis keys: `chat:memory:{tenant}:{user}:{lang}` (memory), `chat:session:{tenant}:{user}` (session)

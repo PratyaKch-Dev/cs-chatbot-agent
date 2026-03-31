@@ -18,3 +18,4 @@ Add a new file here each time something is updated — never edit old entries.
 | [003](changes/003_skills_setup.md) | 2026-03-30 | Skills setup & cleanup | config | pre-phase |
 | [004](changes/004_add_gitignore.md) | 2026-03-30 | Add .gitignore | config | pre-phase |
 | [005](changes/005_add_docker_compose.md) | 2026-03-30 | Add docker-compose.yml | config | pre-phase |
+| [006](changes/006_offline_knowledge_pipeline.md) | 2026-03-31 | Offline knowledge pipeline | feature | 2 |
