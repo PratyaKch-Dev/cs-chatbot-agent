@@ -4,23 +4,70 @@ Gradio test UI — local development and QA testing.
 Simulates a LINE chat conversation without needing a real LINE account.
 """
 
-from typing import Generator
+import logging
 
 import gradio as gr
+from dotenv import load_dotenv
 
-# TODO Phase 3: import orchestrator
-# from pipeline.orchestrator import handle_message
+load_dotenv()
+
+from pipeline.router import decide_route
+from rag.retriever import retrieve, build_context
+from pipeline.answer_generator import generate_answer
+from utils.language import detect_language
+from utils.pipeline_logger import PipelineTrace
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    datefmt="%H:%M:%S",
+)
 
 TENANT_ID = "hns"  # default tenant for testing
 
 
-def _chat(message: str, history: list[list[str]], user_id: str) -> str:
-    """Process a chat message and return a reply.
+def _chat(message: str, history: list[list[str]], tenant_id: str) -> str:
+    """Process a chat message through the FAQ pipeline."""
+    if not message.strip():
+        return ""
 
-    TODO Phase 3: wire to pipeline orchestrator.
-    """
-    # Placeholder until orchestrator is implemented
-    return f"[stub] received: {message}"
+    language = detect_language(message)
+    trace = PipelineTrace(tenant_id=tenant_id, query=message, language=language)
+
+    # Build history in LLM format
+    llm_history = []
+    for user_msg, bot_msg in history:
+        llm_history.append({"role": "user", "content": user_msg})
+        llm_history.append({"role": "assistant", "content": bot_msg})
+
+    decision = decide_route("question", message, language, tenant_id)
+    trace.set_route(route=str(decision.route), reason=decision.reason)
+
+    result = retrieve(message, tenant_id, language, top_k=3)
+    trace.set_retrieval(
+        query_used=result.query_used,
+        collection=result.collection,
+        documents=result.documents,
+    )
+    context = build_context(result.documents, language)
+
+    answer = generate_answer(
+        message=message,
+        context=context,
+        language=language,
+        tenant_id=tenant_id,
+        intent="question",
+        history=llm_history,
+        route=str(decision.route),
+    )
+    trace.set_answer(
+        text=answer.text,
+        grounding_score=answer.grounding_score,
+        was_escalated=answer.was_escalated,
+    )
+    trace.flush()
+
+    return answer.text
 
 
 def build_demo() -> gr.Blocks:
@@ -30,8 +77,8 @@ def build_demo() -> gr.Blocks:
 
         with gr.Row():
             user_id_input = gr.Textbox(
-                value="test_user_001",
-                label="User ID (simulates LINE user_id)",
+                value=TENANT_ID,
+                label="Tenant ID",
                 scale=1,
             )
 

@@ -45,10 +45,21 @@ def decide_route(
     language: str,
     tenant_id: str,
 ) -> RouteDecision:
-    """
-    Determine which path should handle this request.
+    """Determine which path should handle this request."""
+    # Template short-circuit — no LLM needed
+    if intent in TEMPLATE_INTENTS:
+        return RouteDecision(route=Route.TEMPLATE, reason=f"intent={intent}", confidence=1.0)
 
-    TODO Phase 3: implement FAQ vs troubleshooting classification.
-    TODO Phase 5: wire troubleshooting keyword/classifier logic.
-    """
-    raise NotImplementedError("Phase 3")
+    # Troubleshooting — employee-specific data required
+    msg_lower = message.lower()
+    lang_key = "th" if language == "th" else "en"
+    for keyword in TROUBLESHOOTING_KEYWORDS.get(lang_key, []):
+        if keyword in msg_lower:
+            return RouteDecision(
+                route=Route.TROUBLESHOOTING,
+                reason=f"keyword={keyword}",
+                confidence=0.8,
+            )
+
+    # Default — FAQ RAG path
+    return RouteDecision(route=Route.FAQ, reason="default", confidence=0.9)

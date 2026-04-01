@@ -29,38 +29,77 @@ CSV_COLUMNS = [
 
 def merge_for_company(company_id: str, language: str = "th") -> str:
     """
-    Merge public_faq.csv + {company_id}_company.csv → merged/{company_id}_{language}.csv
+    Merge public_faq.csv (optional) + {company_id}_company.csv → merged/{company_id}_{language}.csv
 
+    Handles both single-language CSVs (Context/Question/Answer)
+    and bilingual CSVs (Context (TH)/Question (TH)/Answer (TH)).
     Priority: company-specific rows override public rows with the same Question.
     Returns the path to the output file.
     """
     company_csv = DATA_DIR / "company" / company_id / f"{company_id}_company.csv"
 
-    if not PUBLIC_FAQ_PATH.exists():
-        raise FileNotFoundError(f"Public FAQ not found: {PUBLIC_FAQ_PATH}")
     if not company_csv.exists():
         raise FileNotFoundError(f"Company FAQ not found: {company_csv}")
 
     MERGED_DIR.mkdir(parents=True, exist_ok=True)
     output_path = MERGED_DIR / f"{company_id}_{language}.csv"
 
-    # Load public FAQ rows
-    public_rows = _read_csv(PUBLIC_FAQ_PATH)
-
-    # Load company-specific rows
-    company_rows = _read_csv(company_csv)
-
-    # Deduplicate: build dict keyed by Question (company rows win)
     merged: dict[str, dict] = {}
-    for row in public_rows:
-        merged[row["Question"].strip().lower()] = row
-    for row in company_rows:
-        merged[row["Question"].strip().lower()] = row  # overrides public if same question
 
-    final_rows = list(merged.values())
+    # Public FAQ (optional)
+    if PUBLIC_FAQ_PATH.exists():
+        for row in _read_csv(PUBLIC_FAQ_PATH):
+            normalized = _normalize_row(row, language, company_id, source_type="public")
+            if normalized:
+                merged[normalized["Question"].strip().lower()] = normalized
 
-    _write_csv(output_path, final_rows)
+    # Company-specific rows (override public on same question)
+    for row in _read_csv(company_csv):
+        normalized = _normalize_row(row, language, company_id, source_type="company")
+        if normalized:
+            merged[normalized["Question"].strip().lower()] = normalized
+
+    _write_csv(output_path, list(merged.values()))
     return str(output_path)
+
+
+def _normalize_row(row: dict, language: str, company_id: str, source_type: str) -> dict | None:
+    """Map any CSV column format to the standard single-language format."""
+    lang_suffix = f" ({language.upper()})"
+
+    # Bilingual format: Context (TH), Question (TH), Answer (TH)
+    if f"Question{lang_suffix}" in row:
+        q = row.get(f"Question{lang_suffix}", "").strip()
+        if not q:
+            return None
+        return {
+            "Context": row.get(f"Context{lang_suffix}", "").strip(),
+            "Question": q,
+            "Answer": row.get(f"Answer{lang_suffix}", "").strip(),
+            "source_type": row.get("source_type", source_type),
+            "company_id": row.get("company_id", company_id),
+            "incident": row.get("incident", ""),
+            "tags": row.get("tags", ""),
+            "followup_questions": row.get("followup_questions", ""),
+        }
+
+    # Standard format: Context, Question, Answer
+    if "Question" in row:
+        q = row.get("Question", "").strip()
+        if not q:
+            return None
+        return {
+            "Context": row.get("Context", "").strip(),
+            "Question": q,
+            "Answer": row.get("Answer", "").strip(),
+            "source_type": row.get("source_type", source_type),
+            "company_id": row.get("company_id", company_id),
+            "incident": row.get("incident", ""),
+            "tags": row.get("tags", ""),
+            "followup_questions": row.get("followup_questions", ""),
+        }
+
+    return None
 
 
 def _read_csv(path: Path) -> list[dict]:
