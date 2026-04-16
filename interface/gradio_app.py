@@ -6,6 +6,7 @@ Simulates a LINE chat conversation without needing a real LINE account.
 
 import logging
 import os
+import time
 from pathlib import Path
 
 import gradio as gr
@@ -191,7 +192,9 @@ def _chat(
     # ── FAQ path ───────────────────────────────────────────────────────────────
     else:
         trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
+        _t0 = time.perf_counter()
         result = retrieve(message, tenant_id, language, top_k=3)
+        trace.mark_step("retrieval", (time.perf_counter() - _t0) * 1000)
         trace.set_retrieval(
             query_used=result.query_used,
             collection=result.collection,

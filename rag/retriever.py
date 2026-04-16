@@ -19,7 +19,7 @@ from rag.reranker import rerank
 
 load_dotenv()
 
-VECTOR_SEARCH_TOP_K = 10
+VECTOR_SEARCH_TOP_K = 5
 RERANK_TOP_K = 5
 
 _qdrant_client: QdrantClient | None = None

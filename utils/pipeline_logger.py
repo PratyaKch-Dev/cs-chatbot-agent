@@ -19,6 +19,7 @@ import time
 from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 LOG_DIR = Path(__file__).parent.parent / "logs"
 LOG_FILE = LOG_DIR / "faq_trace.log"       # human-readable
@@ -27,6 +28,26 @@ JSONL_FILE = LOG_DIR / "faq_trace.jsonl"   # machine-readable
 _logger = logging.getLogger("pipeline")
 
 SEP = "─" * 72
+
+# ── Active-trace registry ─────────────────────────────────────────────────────
+# call_llm() pushes here so every LLM call is recorded without touching
+# the router/answer_generator signatures.
+_active_trace: Optional["PipelineTrace"] = None
+
+
+def set_active_trace(trace: Optional["PipelineTrace"]) -> None:
+    global _active_trace
+    _active_trace = trace
+
+
+def record_llm_call(
+    step: str, model: str, in_tokens: int, out_tokens: int, latency_ms: float = 0.0
+) -> None:
+    """Called by llm/client.py after every successful LLM call."""
+    if _active_trace is not None:
+        _active_trace.llm_calls.append(
+            {"step": step, "model": model, "in": in_tokens, "out": out_tokens, "ms": latency_ms}
+        )
 
 
 @dataclass
@@ -54,6 +75,8 @@ class PipelineTrace:
     grounding_score: float = 0.0
     was_escalated: bool = False
     duration_ms: float = 0.0
+    llm_calls: list[dict] = field(default_factory=list)   # [{step, model, in, out, ms}, ...]
+    step_times: list[dict] = field(default_factory=list)  # [{step, ms}, ...] for non-LLM steps
 
     _start: float = field(default_factory=time.time, repr=False)
 
@@ -81,12 +104,20 @@ class PipelineTrace:
         self._employee_id    = employee_id
         self._tools_used     = tools_used
 
+    def mark_step(self, step: str, latency_ms: float) -> None:
+        """Record timing for a named non-LLM step (e.g. 'retrieval', 'reranker')."""
+        self.step_times.append({"step": step, "ms": round(latency_ms, 1)})
+
     def set_answer(self, text: str, grounding_score: float, was_escalated: bool) -> None:
         self.answer = text
         self.grounding_score = round(grounding_score, 4)
         self.was_escalated = was_escalated
 
+    def __post_init__(self) -> None:
+        set_active_trace(self)
+
     def flush(self) -> None:
+        set_active_trace(None)
         self.duration_ms = round((time.time() - self._start) * 1000, 1)
         LOG_DIR.mkdir(exist_ok=True)
 
@@ -136,6 +167,22 @@ def _write_readable(t: PipelineTrace) -> None:
         else:
             lines.append("    (none)")
 
+    has_timings = t.step_times or t.llm_calls
+    if has_timings:
+        lines += ["", "  TIMINGS:"]
+        for s in t.step_times:
+            lines.append(f"    [{s['step']:12s}]  {s['ms']:>7.1f}ms")
+        for c in t.llm_calls:
+            lines.append(
+                f"    [{c['step']:12s}]  {c.get('ms', 0):>7.1f}ms  "
+                f"(LLM: model={c['model']}  in={c['in']} out={c['out']})"
+            )
+        accounted_ms = sum(s["ms"] for s in t.step_times) + sum(c.get("ms", 0) for c in t.llm_calls)
+        other_ms = max(t.duration_ms - accounted_ms, 0.0)
+        lines.append(f"    [{'other':12s}]  {other_ms:>7.1f}ms  (lang/intent/overhead)")
+        lines.append(f"    {'─' * 36}")
+        lines.append(f"    [{'TOTAL':12s}]  {t.duration_ms:>7.1f}ms")
+
     score_bar = _score_bar(t.grounding_score)
     lines += [
         "",
@@ -166,6 +213,8 @@ def _write_jsonl(t: PipelineTrace) -> None:
         "grounding_score": t.grounding_score,
         "was_escalated": t.was_escalated,
         "duration_ms": t.duration_ms,
+        "step_times": t.step_times,
+        "llm_calls": t.llm_calls,
     }
     with open(JSONL_FILE, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")

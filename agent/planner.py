@@ -64,9 +64,11 @@ def run_troubleshooting_agent(
                 )
             elif tool_name == "get_attendance":
                 # Extract paycycle start_date from employee_data if available
+                from datetime import date
                 date_from = _extract_paycycle_start(tool_outputs.get("get_employee_data", ""))
+                date_to   = date.today().isoformat()
                 tool_outputs["get_attendance"] = get_attendance.invoke(
-                    {"employee_id": employee_id, "date_from": date_from}
+                    {"employee_id": employee_id, "date_from": date_from, "date_to": date_to}
                 )
         except Exception as exc:
             _logger.warning(f"[planner] tool {tool_name} failed for {employee_id}: {exc}")

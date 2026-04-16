@@ -20,6 +20,7 @@ Usage:
 """
 
 import os
+import time
 from functools import lru_cache
 from typing import Optional
 
@@ -62,19 +63,37 @@ def call_llm(
     system: str = "",
     max_tokens: int = DEFAULT_MAX_TOKENS,
     language: str = "th",
+    step: str = "answer",
 ) -> str:
     """
     One-shot LLM call. Returns reply text.
     Falls back to a safe message if provider raises.
 
     Args:
-        messages: [{"role": "user"|"assistant", "content": str}, ...]
-        system:   System prompt
+        messages:   [{"role": "user"|"assistant", "content": str}, ...]
+        system:     System prompt
         max_tokens: Max tokens to generate
-        language: Used for fallback message language
+        language:   Used for fallback message language
+        step:       Label recorded in the pipeline trace (e.g. "router", "answer")
     """
     try:
+        t0 = time.perf_counter()
         response = get_provider().chat(messages, system=system, max_tokens=max_tokens)
+        latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+        # Push to active pipeline trace (no-op when no trace is active)
+        try:
+            from utils.pipeline_logger import record_llm_call
+            record_llm_call(
+                step=step,
+                model=response.model or get_provider().get_model_name(),
+                in_tokens=response.input_tokens,
+                out_tokens=response.output_tokens,
+                latency_ms=latency_ms,
+            )
+        except Exception:
+            pass  # never let tracing break the call
+
         return response.text
     except NotImplementedError:
         raise

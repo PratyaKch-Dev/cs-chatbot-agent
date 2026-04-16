@@ -135,6 +135,7 @@ def _llm_classify(message: str, language: str) -> Optional[RouteDecision]:
             system=_ROUTER_SYSTEM,
             max_tokens=10,
             language=language,
+            step="router",
         )
         label = _parse_label(raw)
         if label is None:
