@@ -1,26 +1,17 @@
 """
-Troubleshooting Agent planner — LangChain tool-calling agent.
+Troubleshooting planner — deterministic tool execution.
 
-The LLM agent decides which tools to call based on the employee's issue.
-New tools can be added to _TOOLS in the future without changing this file.
+The router's Haiku classifier already decided the sub-type:
+    troubleshooting_withdrawal  → employee_data + attendance
+    troubleshooting_attendance  → employee_data (paycycle) + attendance
+    troubleshooting_account     → employee_data only
+    troubleshooting_deduction   → employee_data only (deduction focus)
 
-Tool call strategy (agent decides, guided by system prompt):
-  1. get_employee_data  — always first; returns profile, sync, deductions, paycycle
-  2. get_attendance     — uses paycycle.start_date from step 1 as date_from
-
-Evidence analysis is fully deterministic (evidence.py, no LLM).
-
-Answer generation:
-  - Blocking root cause (blacklisted / suspended / sync_pending) → template (no LLM)
-  - No blocking issue (ok) → answer_generator calls LLM with diagnostic_context
+Tools are called in a fixed order based on sub-type — no ReAct agent needed.
+evidence.py then determines root_cause and picks the answer template.
 """
 
 import logging
-import os
-import time
-
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from agent.tools.employee_data import get_employee_data
 from agent.tools.attendance import get_attendance
@@ -28,64 +19,16 @@ from agent.evidence import (
     build_diagnostic_context, format_for_llm, get_filled_template,
 )
 
-_TOOLS = [
-    get_employee_data,
-    get_attendance,
-]
+_logger = logging.getLogger("agent.planner")
 
-_AGENT_SYSTEM_PROMPT = """\
-You are a diagnostic assistant for the Salary Hero HR system.
-Your ONLY job is to call tools to gather evidence about why an employee \
-cannot withdraw their salary. Do NOT write the final answer.
-
-Tool call strategy:
-1. get_employee_data — always call this first.
-   Returns profile, sync status, deductions, paycycle dates, and an
-   attendance_snapshot covering the last 7 days (or since paycycle start,
-   whichever is more recent).
-   → If blacklisted or suspended: STOP, return findings.
-   → If sync_status is "pending": STOP, return findings.
-
-2. get_attendance — call ONLY if the attendance_snapshot is not enough:
-   - User asks about a specific past period beyond the snapshot window
-   - Anomalies in the snapshot suggest you need more historical context
-   Use paycycle.start_date as date_from for the current pay cycle.
-   The API caps results at MAX_ATTENDANCE_DAYS (default 30, configurable).
-
-After calling the tools, respond with a single line: "Diagnosis complete."
-"""
-
-_executor: AgentExecutor | None = None
-
-
-def _get_executor() -> AgentExecutor:
-    global _executor
-    if _executor is None:
-        from llm.client import get_llm
-
-        agent_model = os.environ.get("AGENT_LLM_MODEL", "claude-sonnet-4-6")
-        llm = get_llm().__class__(
-            model=agent_model,
-            api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
-            temperature=0,
-        )
-
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", _AGENT_SYSTEM_PROMPT),
-            ("human", "{input}"),
-            MessagesPlaceholder("agent_scratchpad"),
-        ])
-
-        agent = create_tool_calling_agent(llm, _TOOLS, prompt)
-        _executor = AgentExecutor(
-            agent=agent,
-            tools=_TOOLS,
-            return_intermediate_steps=True,
-            max_iterations=5,
-            handle_parsing_errors=True,
-            verbose=False,
-        )
-    return _executor
+# Sub-type → which tools to call (in order)
+_TOOL_STRATEGY: dict[str, list[str]] = {
+    "troubleshooting_withdrawal": ["get_employee_data", "get_attendance"],
+    "troubleshooting_attendance": ["get_employee_data", "get_attendance"],
+    "troubleshooting_account":    ["get_employee_data"],
+    "troubleshooting_deduction":  ["get_employee_data"],
+}
+_DEFAULT_STRATEGY = ["get_employee_data", "get_attendance"]
 
 
 def run_troubleshooting_agent(
@@ -93,68 +36,73 @@ def run_troubleshooting_agent(
     issue: str,
     language: str,
     tenant_id: str,
+    sub_type: str = "",
 ) -> dict:
     """
-    Run the LangChain tool-calling agent to gather diagnostic evidence.
+    Run deterministic tool calls based on the sub-type from the router.
 
     Returns:
         {
-          "diagnostic_context": str   — formatted text for answer_generator (LLM context)
+          "diagnostic_context": str   — formatted text for answer_generator
           "template_answer":    str   — pre-filled template; empty = let LLM answer
-          "tools_used":         list  — tool names called by the agent
+          "tools_used":         list  — tool names called
           "root_cause":         str   — root cause key (e.g. "sync_pending")
           "iterations":         int   — number of tool calls made
         }
     """
     lang = language if language in ("th", "en") else "th"
-
-    agent_input = (
-        f"employee_id: {employee_id}\n"
-        f"issue: {issue}"
-    )
+    strategy = _TOOL_STRATEGY.get(sub_type, _DEFAULT_STRATEGY)
+    _logger.info(f"[planner] {employee_id} | sub_type={sub_type!r} | tools={strategy}")
 
     tool_outputs: dict[str, str] = {}
-    _MAX_RETRIES = 2
-    for attempt in range(_MAX_RETRIES + 1):
-        try:
-            result = _get_executor().invoke({"input": agent_input})
-            for action, output in result.get("intermediate_steps", []):
-                tool_outputs[action.tool] = output
-            break
-        except Exception as e:
-            err_str = str(e).lower()
-            if attempt < _MAX_RETRIES and (
-                "overloaded" in err_str or "529" in err_str or "rate" in err_str
-            ):
-                wait = 2 ** attempt
-                logging.warning(
-                    f"[agent] API overloaded for {employee_id}, retry {attempt + 1} in {wait}s"
-                )
-                time.sleep(wait)
-            else:
-                logging.warning(f"[agent] executor error for {employee_id}: {e}")
-                break
 
-    # Safety net: agent must always have get_employee_data. If the LLM skipped
-    # the tool call (happens on short/generic issues), fetch it directly.
+    for tool_name in strategy:
+        try:
+            if tool_name == "get_employee_data":
+                tool_outputs["get_employee_data"] = get_employee_data.invoke(
+                    {"employee_id": employee_id}
+                )
+            elif tool_name == "get_attendance":
+                # Extract paycycle start_date from employee_data if available
+                date_from = _extract_paycycle_start(tool_outputs.get("get_employee_data", ""))
+                tool_outputs["get_attendance"] = get_attendance.invoke(
+                    {"employee_id": employee_id, "date_from": date_from}
+                )
+        except Exception as exc:
+            _logger.warning(f"[planner] tool {tool_name} failed for {employee_id}: {exc}")
+
+    # Safety net — always need employee_data
     if "get_employee_data" not in tool_outputs:
-        logging.warning(
-            f"[agent] {employee_id}: agent skipped get_employee_data — fetching directly"
-        )
-        tool_outputs["get_employee_data"] = get_employee_data.invoke({"employee_id": employee_id})
+        _logger.warning(f"[planner] {employee_id}: get_employee_data missing — fetching directly")
+        try:
+            tool_outputs["get_employee_data"] = get_employee_data.invoke(
+                {"employee_id": employee_id}
+            )
+        except Exception as exc:
+            _logger.error(f"[planner] fallback get_employee_data failed: {exc}")
 
     context   = build_diagnostic_context(employee_id, issue, tool_outputs, lang)
     formatted = format_for_llm(context, lang)
     template  = get_filled_template(context, lang)
 
-    logging.info(
-        f"[agent] {employee_id} | root={context.root_cause} | tools={context.tools_used}"
+    _logger.info(
+        f"[planner] {employee_id} | root={context.root_cause} | tools={context.tools_used}"
     )
 
     return {
         "diagnostic_context": formatted,
-        "template_answer":    template,     # "" for ok → answer_generator uses LLM
+        "template_answer":    template,
         "tools_used":         context.tools_used,
         "root_cause":         context.root_cause,
         "iterations":         len(tool_outputs),
     }
+
+
+def _extract_paycycle_start(employee_data_output: str) -> str:
+    """
+    Pull paycycle start_date from the employee_data tool output string.
+    Returns empty string if not found — get_attendance will use its own default.
+    """
+    import re
+    match = re.search(r"start_date[\"']?\s*:\s*[\"']?([\d\-]+)", employee_data_output)
+    return match.group(1) if match else ""

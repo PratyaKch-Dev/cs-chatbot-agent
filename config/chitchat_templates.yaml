@@ -1,0 +1,28 @@
+# Chitchat & missing-info response templates.
+#
+# Keys must match the labels the LLM router returns.
+# Edit the text fields freely — no code changes needed.
+
+greeting:
+  th: "สวัสดีค่ะ ยินดีให้บริการค่ะ มีอะไรให้ช่วยเหลือไหมคะ?"
+  en: "Hello! How can I help you today?"
+
+thanks:
+  th: "ยินดีให้บริการค่ะ หากมีข้อสงสัยเพิ่มเติม สามารถถามได้เลยนะคะ"
+  en: "You're welcome! Feel free to ask if you have more questions."
+
+goodbye:
+  th: "ลาก่อนค่ะ หวังว่าจะได้ช่วยเหลือคุณได้อีกในครั้งต่อไปนะคะ"
+  en: "Goodbye! Hope I was able to help. Have a great day!"
+
+frustrated:
+  th: "ขอโทษสำหรับความไม่สะดวกค่ะ เราเข้าใจว่าปัญหานี้อาจทำให้รู้สึกหงุดหงิดได้ ช่วยเล่าปัญหาให้ฟังได้เลยนะคะ จะพยายามช่วยให้ดีที่สุดค่ะ"
+  en: "I'm sorry to hear you're having trouble — that sounds really frustrating. Please describe the issue and I'll do my best to help."
+
+confused:
+  th: "ขอโทษที่ทำให้งงนะคะ ช่วยอธิบายปัญหาให้ละเอียดขึ้นได้ไหมคะ?"
+  en: "Sorry for the confusion! Could you describe your issue in a bit more detail?"
+
+missing_info:
+  th: "กรุณาบอกรายละเอียดเพิ่มเติมได้เลยค่ะ เช่น ปัญหาที่พบคืออะไร หรืออยากทราบเรื่องอะไร เพื่อที่จะได้ช่วยได้ถูกต้องค่ะ"
+  en: "Could you share a bit more detail? For example, what issue are you facing or what would you like to know — that way I can help you better."

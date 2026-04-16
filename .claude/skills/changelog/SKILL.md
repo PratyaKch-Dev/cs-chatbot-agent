@@ -7,11 +7,13 @@ When invoked (with optional $ARGUMENTS as a short title):
 
 1. Read planning/CHANGELOG.md to find the current highest entry number. Next = that number + 1, zero-padded to 3 digits (e.g. 003).
 
-2. Determine the title:
-   - If $ARGUMENTS is provided, use it as the title
-   - Otherwise infer from what was just done in the conversation
+2. Run `git diff --staged` to see exactly what is staged. Use this diff as the source of truth for what was implemented — do not rely on conversation inference.
 
-3. Create planning/changes/<NNN>_<slug>.md using this structure:
+3. Determine the title:
+   - If $ARGUMENTS is provided, use it as the title
+   - Otherwise derive the title from the staged diff
+
+4. Create planning/changes/<NNN>_<slug>.md using this structure:
 
 ```
 # <NNN> — <Title>
@@ -38,10 +40,10 @@ When invoked (with optional $ARGUMENTS as a short title):
 -
 ```
 
-   Fill in every section from what was actually done in this conversation. Do not leave placeholders.
+   Fill in every section from the staged diff. Do not leave placeholders.
 
-4. Add one row to the index table in planning/CHANGELOG.md:
+5. Add one row to the index table in planning/CHANGELOG.md:
    | [<NNN>](changes/<NNN>_<slug>.md) | <date> | <title> | <type> | <phase> |
 
-5. Ask: "Changelog <NNN> created — commit it?"
+6. Ask: "Changelog <NNN> created — commit it?"
    Wait for confirmation before any git commit.

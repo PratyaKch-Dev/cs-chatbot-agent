@@ -46,6 +46,7 @@ class PipelineTrace:
 
     route: str = ""
     route_reason: str = ""
+    route_label: str = ""   # LLM-returned label e.g. "greeting", "troubleshooting_withdrawal"
     query_cleaned: str = ""
     collection: str = ""
     hits: list[RetrievalHit] = field(default_factory=list)
@@ -56,9 +57,10 @@ class PipelineTrace:
 
     _start: float = field(default_factory=time.time, repr=False)
 
-    def set_route(self, route: str, reason: str) -> None:
+    def set_route(self, route: str, reason: str, label: str = "") -> None:
         self.route = route
         self.route_reason = reason
+        self.route_label = label
 
     def set_retrieval(self, query_used: str, collection: str, documents: list) -> None:
         self.query_cleaned = query_used
@@ -105,7 +107,8 @@ def _write_readable(t: PipelineTrace) -> None:
         f"  {dt}  |  {t.tenant_id}/{t.language}  |  {t.duration_ms}ms",
         SEP,
         f"  QUERY    : {t.query}",
-        f"  ROUTE    : {route_label}  ({t.route_reason})",
+        f"  ROUTE    : {route_label}  ({t.route_reason})"
+        + (f"  →  {t.route_label}" if getattr(t, "route_label", "") else ""),
     ]
 
     if is_ts:

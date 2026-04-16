@@ -78,5 +78,7 @@ def call_llm(
         return response.text
     except NotImplementedError:
         raise
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger("llm.client").error(f"[LLM] API call failed: {type(e).__name__}: {e}")
         return get_provider().get_fallback_response(language)

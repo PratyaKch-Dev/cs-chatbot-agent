@@ -2,6 +2,79 @@
 
 ---
 
+## Request Router (LLM-based)
+
+```
+User message
+      │
+ Fast LLM (Claude Haiku, max_tokens=10, ~150ms)
+      │
+ Returns one specific label:
+      │
+  ┌──────────┬─────────┬──────────┬────────────┬──────────────┐
+  │ greeting │  thanks │  goodbye │ frustrated │   confused   │
+  │ missing_ │         │          │            │              │
+  │  info    │         │          │            │              │
+  └────┬─────┴────┬────┴─────┬────┴──────┬─────┴───────┬──────┘
+       │          │          │           │             │
+       └──────────┴──────────┴───────────┘             │
+                       CHITCHAT / MISSING_INFO          │
+                  chitchat_templates.yaml               │
+                  (look up by label, no LLM)            │
+                                                        │
+  ┌─────────────────────────────────┐     ┌─────────────┴───────┐
+  │     troubleshooting_*           │     │         faq         │
+  │                                 │     │                     │
+  │  troubleshooting_withdrawal     │     │  Vector DB search   │
+  │  troubleshooting_attendance     │     │  → LLM answer       │
+  │  troubleshooting_account        │     └─────────────────────┘
+  │  troubleshooting_deduction      │
+  └──────────────┬──────────────────┘
+                 │
+         sub_type → tool strategy
+         (deterministic, no ReAct agent)
+                 │
+         evidence.py → root_cause
+                 │
+         answer_templates.yaml
+```
+
+| Detail | |
+|--------|---|
+| **Primary** | LLM classifier — handles Thai, English, mixed language, typos, context |
+| **Fallback** | Intent keyword matching + troubleshooting keyword list — used if LLM call fails |
+| **Chitchat labels** | `greeting / thanks / goodbye / frustrated / confused` → CHITCHAT |
+| **Missing info label** | `missing_info` → MISSING_INFO |
+| **Troubleshooting labels** | `troubleshooting_withdrawal / _attendance / _account / _deduction` → TROUBLESHOOTING + sub_type |
+
+---
+
+## Chitchat & Missing Info
+
+```
+Router label (e.g. "greeting")
+      │
+ get_chitchat_template(label, language)
+      │  reads config/chitchat_templates.yaml
+      │
+ Return template text directly — no LLM, no retrieval
+```
+
+**`config/chitchat_templates.yaml`** — edit this file to change any chitchat response:
+
+| Key | Thai | English |
+|-----|------|---------|
+| `greeting` | สวัสดีค่ะ ยินดีให้บริการค่ะ... | Hello! How can I help... |
+| `thanks` | ยินดีให้บริการค่ะ... | You're welcome!... |
+| `goodbye` | ลาก่อนค่ะ... | Goodbye!... |
+| `frustrated` | ขอโทษสำหรับความไม่สะดวกค่ะ... | I'm sorry to hear... |
+| `confused` | ขอโทษที่ทำให้งงนะคะ... | Sorry for the confusion!... |
+| `missing_info` | กรุณาบอกรายละเอียดเพิ่มเติม... | Could you share more detail?... |
+
+> **Note — FAQ → missing_info fallback:** when FAQ retrieval finds no relevant results, it currently escalates to HR handoff. A "ask clarifying question first" flow will be added when chat history is implemented.
+
+---
+
 ## Offline Data Pipeline
 
 ```
@@ -48,7 +121,8 @@ User Question
       │
  Grounding Check (word-overlap score)
       │
- Score < 0.25 AND retrieval < 0.6? → Human Handoff
+ score == 0.0 (LLM failed)?        → Human Handoff  ← always
+ score < 0.25 AND retrieval < 0.4? → Human Handoff  ← weak match
       │
  Return Answer
 ```
@@ -59,7 +133,7 @@ User Question
 | **Embedding cache** | LRU 500 entries — identical queries skip re-embedding |
 | **Reranker** | `BAAI/bge-reranker-base` — sigmoid scoring, filters weak matches below 0.3 |
 | **Grounding check** | Word-overlap heuristic between answer and retrieved context |
-| **Escalation gate** | Only escalates if **both** grounding < 0.25 **and** top retrieval score < 0.6 |
+| **Escalation gate** | Escalates if: (grounding < 0.25 **and** retrieval < 0.4) **or** grounding == 0.0 (LLM error) |
 | **Answer cleaning** | `_clean_answer()` strips LLM preamble boilerplate ("จากข้อมูล...", "ตามข้อมูล...") |
 
 ---
@@ -101,27 +175,28 @@ Run: `PYTHONPATH=. python scripts/test_faq.py --tenant hns --lang th`
 ```
 User: "ทำไมเบิกเงินไม่ได้ครับ"
         │
-    Router → TROUBLESHOOTING
-    (keyword match: เบิก, ยอด 0, ซิงค์, ...)
+    Router (Haiku) → "troubleshooting_withdrawal"
         │
-  LangChain Tool-Calling Agent (Claude Sonnet)
-  — decides which tools to call based on the issue —
+    sub_type → tool strategy (deterministic):
         │
-  ┌─ Tool 1: get_employee_data ──────────────────────────────┐
-  │  Returns all of:                                          │
-  │  • profile          → blacklisted? suspended?             │
+  troubleshooting_withdrawal  →  get_employee_data + get_attendance
+  troubleshooting_attendance  →  get_employee_data + get_attendance
+  troubleshooting_account     →  get_employee_data only
+  troubleshooting_deduction   →  get_employee_data only
+        │
+  ┌─ get_employee_data ──────────────────────────────────────┐
+  │  • profile          → blacklisted? suspended? status?     │
   │  • sync schedule    → sync pending?                       │
-  │  • deductions       → only shown if issue mentions        │
-  │                        หัก / tax / OT                     │
-  │  • paycycle dates   → start_date used in Tool 2           │
+  │  • deductions       → itemised deduction list             │
+  │  • paycycle dates   → start_date used for attendance      │
   └──────────────────────────────────────────────────────────┘
         │
-  ┌─ Tool 2: get_attendance ─────────────────────────────────┐
+  ┌─ get_attendance (if strategy includes it) ───────────────┐
   │  Date range: paycycle.start_date → today                  │
   │  (fallback: last 7 days if paycycle unavailable)          │
   │  Returns attendance records → check remarks               │
   └──────────────────────────────────────────────────────────┘
-        │  (more tools can be added here in future phases)
+        │  (more tools: add to _TOOL_STRATEGY in planner.py)
         │
   evidence.py → build_diagnostic_context()
         │
@@ -143,12 +218,14 @@ User: "ทำไมเบิกเงินไม่ได้ครับ"
 
 | Step | Detail |
 |------|--------|
-| **LangChain agent** | Claude Sonnet decides which tools to call; new tools can be added to `_TOOLS` without changing planner logic |
-| **Tool 1** | `get_employee_data` — profile, sync, deductions, paycycle in one API call |
-| **Tool 2** | `get_attendance` — uses `paycycle.start_date` from Tool 1 as date range |
+| **Router sub-type** | Haiku classifies into `troubleshooting_withdrawal / _attendance / _account / _deduction` |
+| **Tool strategy** | Deterministic per sub-type — no ReAct agent, no Sonnet needed for diagnosis |
+| **get_employee_data** | Always called — profile, sync, deductions, paycycle in one API call |
+| **get_attendance** | Called only when sub-type needs it (withdrawal / attendance) |
 | **Root cause priority** | blacklisted → suspended → sync_pending → ok |
 | **Blocking issues** | Always use deterministic template — consistent, no hallucination risk |
 | **Ok path** | LLM generates answer from full diagnostic context — handles nuanced cases (deductions, remarks) |
+| **Add new tool** | Add entry to `_TOOL_STRATEGY` in `agent/planner.py` — no other changes needed |
 | **Mock clients** | `USE_MOCK_APIS=true` loads from `users.json` — 6 employees, 6 scenarios |
 
 ### Root causes & templates

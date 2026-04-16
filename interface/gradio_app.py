@@ -18,6 +18,7 @@ from rag.retriever import retrieve, build_context
 from pipeline.answer_generator import generate_answer
 from utils.language import detect_language
 from utils.pipeline_logger import PipelineTrace
+from llm.intent import detect_intent
 
 logging.basicConfig(
     level=logging.INFO,
@@ -95,7 +96,8 @@ def _chat(
         llm_history.append({"role": "user", "content": user_msg})
         llm_history.append({"role": "assistant", "content": bot_msg})
 
-    decision = decide_route("question", message, language, tenant_id)
+    intent_result = detect_intent(message, language)
+    decision = decide_route(intent_result.intent, message, language, tenant_id)
 
     # If we have a cached diagnostic context AND the question looks like a follow-up,
     # answer using the cached context directly — no need to re-run the agent.
@@ -127,15 +129,44 @@ def _chat(
             system_prompt_override=system,
         )
 
+    # ── Chitchat path ──────────────────────────────────────────────────────────
+    elif decision.route == Route.CHITCHAT:
+        trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
+        answer = generate_answer(
+            message=message,
+            context="",
+            language=language,
+            tenant_id=tenant_id,
+            intent=intent_result.intent.value,
+            history=llm_history,
+            route=str(decision.route),
+            template_key=decision.template_key,
+        )
+
+    # ── Missing info path ──────────────────────────────────────────────────────
+    elif decision.route == Route.MISSING_INFO:
+        trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
+        answer = generate_answer(
+            message=message,
+            context="",
+            language=language,
+            tenant_id=tenant_id,
+            intent=intent_result.intent.value,
+            history=llm_history,
+            route=str(decision.route),
+            template_key=decision.template_key,
+        )
+
     # ── Troubleshooting path ───────────────────────────────────────────────────
     elif decision.route == Route.TROUBLESHOOTING:
-        trace.set_route(route=str(decision.route), reason=decision.reason)
+        trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
         from agent.planner import run_troubleshooting_agent
         agent_result = run_troubleshooting_agent(
             employee_id=employee_id,
             issue=message,
             language=language,
             tenant_id=tenant_id,
+            sub_type=decision.template_key,
         )
         trace.set_troubleshooting(
             employee_id=employee_id,
@@ -159,7 +190,7 @@ def _chat(
 
     # ── FAQ path ───────────────────────────────────────────────────────────────
     else:
-        trace.set_route(route=str(decision.route), reason=decision.reason)
+        trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
         result = retrieve(message, tenant_id, language, top_k=3)
         trace.set_retrieval(
             query_used=result.query_used,
