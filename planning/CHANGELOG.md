@@ -20,3 +20,5 @@ Add a new file here each time something is updated — never edit old entries.
 | [005](changes/005_add_docker_compose.md) | 2026-03-30 | Add docker-compose.yml | config | pre-phase |
 | [006](changes/006_offline_knowledge_pipeline.md) | 2026-03-31 | Offline knowledge pipeline | feature | 2 |
 | [007](changes/007_faq_answer_quality_and_logging.md) | 2026-04-01 | FAQ answer quality & pipeline logging | feature + fix | 2 |
+| [008](changes/008_troubleshooting_agent.md) | 2026-04-01 | Troubleshooting Agent (LangChain Tool-Calling) | feature | 2 |
+| [009](changes/009_troubleshooting_improvements.md) | 2026-04-02 | Troubleshooting Agent Improvements | fix + feature + data | 2 |

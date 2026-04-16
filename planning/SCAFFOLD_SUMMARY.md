@@ -1,7 +1,7 @@
 # Scaffold Summary — What Was Created & Current State
 
-This document is your checklist before starting Phase 1 implementation.
-Every file is listed with its current state, what's already written, and what's left to implement.
+This document tracks the current implementation state across all modules.
+Last updated: 2026-04-01
 
 ---
 
@@ -16,14 +16,29 @@ Every file is listed with its current state, what's already written, and what's 
 
 ---
 
+## Implementation Progress
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Pre-phase | Scaffold, config, skills, Docker | ✅ Done |
+| Phase 2 | FAQ RAG pipeline (embed → Qdrant → rerank → LLM) | ✅ Done |
+| Phase 3 | Orchestrator, LINE webhook, session memory | 🟡 Next |
+| Phase 4 | Conversation history + LLM summarization | 🟡 Pending |
+| Phase 5 | Troubleshooting agent (ReAct + tools) | 🟡 Pending |
+| Phase 6 | Withdrawal diagnosis domain logic | 🟡 Pending |
+| Phase 7 | Observability, evaluation, LangSmith | 🟡 Pending |
+| Phase 8 | Real API clients, production hardening | 🟡 Pending |
+
+---
+
 ## Root Files
 
 | File | State | What's Inside |
 |------|-------|---------------|
-| `main.py` | ✅ | CLI entry point — `python main.py api\|gradio` wired to FastAPI and Gradio |
-| `requirements.txt` | ✅ | All dependencies pinned (fastapi, langchain, anthropic, sentence-transformers, qdrant, redis, gradio, pytest, etc.) |
-| `.env.example` | ✅ | All required env vars documented with descriptions |
-| `PLAN.md` | ✅ | 8-phase implementation plan with tasks, milestones, dependency order |
+| `main.py` | ✅ | CLI entry point — `python main.py api\|gradio` |
+| `requirements.txt` | ✅ | All dependencies pinned |
+| `.env.example` | ✅ | All required env vars documented |
+| `PLAN.md` | ✅ | 8-phase implementation plan |
 
 ---
 
@@ -31,8 +46,8 @@ Every file is listed with its current state, what's already written, and what's 
 
 | File | State | What's Inside | What's Missing |
 |------|-------|---------------|----------------|
-| `fastapi_app.py` | 🟡 | FastAPI app, `/health` endpoint, LINE webhook skeleton, HMAC-SHA256 signature validation structure, tenant resolver stub | Phase 3: wire to orchestrator |
-| `gradio_app.py` | 🟡 | Full Gradio UI layout — chat window, user ID input, send/clear buttons | Phase 3: replace `_chat()` stub with orchestrator call |
+| `fastapi_app.py` | 🟡 | FastAPI app, `/health`, LINE webhook skeleton, HMAC-SHA256 validation | Phase 3: wire to orchestrator |
+| `gradio_app.py` | ✅ | Full Gradio test UI wired to complete FAQ pipeline with `PipelineTrace` logging | — |
 
 ---
 
@@ -40,22 +55,22 @@ Every file is listed with its current state, what's already written, and what's 
 
 | File | State | What's Inside | What's Missing |
 |------|-------|---------------|----------------|
-| `orchestrator.py` | 🟡 | `RequestContext` and `ResponseContext` dataclasses defined, `handle_message()` stub | Phase 3: full pipeline logic |
-| `router.py` | 🟡 | `Route` enum, `RouteDecision` dataclass, `TEMPLATE_INTENTS` set, `TROUBLESHOOTING_KEYWORDS` dict | Phase 3: routing logic |
-| `safety.py` | 🟡 | `SafetyResult` dataclass, `IN_SCOPE_KEYWORDS` for Thai + English, `BLOCKED_PATTERNS` list | Phase 3: safety filter logic |
-| `answer_generator.py` | 🟡 | `GeneratedAnswer` dataclass, `HANDOFF_THRESHOLD = 0.65` constant, `generate_answer()` and `_score_grounding()` stubs | Phase 3: LLM call + grounding scorer |
-| `handoff.py` | 🟡 | `HandoffContext` dataclass with all fields, `build_handoff_context()` and `format_handoff_message()` stubs | Phase 3: conversation summarization + formatting |
+| `orchestrator.py` | 🟡 | `RequestContext` and `ResponseContext` dataclasses, `handle_message()` stub | Phase 3: full pipeline logic |
+| `router.py` | ✅ | `Route` enum, `decide_route()` — template/troubleshooting/FAQ routing by intent + keywords | — |
+| `safety.py` | ✅ | `IN_SCOPE_KEYWORDS`, `BLOCKED_PATTERNS`, `check_safety()` — scope filter with short-message bypass | — |
+| `answer_generator.py` | ✅ | LLM call, `_score_grounding()` word-overlap heuristic, `_clean_answer()` strips preamble + related-questions boilerplate, `HANDOFF_THRESHOLD=0.25`, Thai/EN system prompts | — |
+| `handoff.py` | 🟡 | `HandoffContext` dataclass, `build_handoff_context()` and `format_handoff_message()` stubs | Phase 3 |
 
 ---
 
-## `rag/` — RAG / FAQ Retrieval Pipeline
+## `rag/` — RAG / FAQ Retrieval Pipeline ✅ Complete
 
-| File | State | What's Inside | What's Missing |
-|------|-------|---------------|----------------|
-| `embeddings.py` | 🟡 | `MODEL_NAME`, `EMBEDDING_DIM = 384`, `BATCH_SIZE = 16`, `@lru_cache(maxsize=500)` on `get_embedding_cached()`, `embed_documents()` and `embed_query()` stubs | Phase 2: load SentenceTransformer model |
-| `reranker.py` | 🟡 | `MODEL_NAME = BAAI/bge-reranker-base`, `DEFAULT_THRESHOLD = 0.3`, `RerankResult` dataclass, `_sigmoid()` ✅ implemented | Phase 2: load CrossEncoder, implement `rerank()` |
-| `query_cleaner.py` | 🟡 | `SYNONYM_MAP` with Thai + English entries, `_normalize_whitespace()` ✅, `_apply_synonyms()` ✅ | Phase 2: wire into `clean_query()` |
-| `retriever.py` | 🟡 | `RetrievedDocument` and `RetrievalResult` dataclasses, `VECTOR_SEARCH_TOP_K = 10`, `RERANK_TOP_K = 5`, `_get_collection_name()` ✅ | Phase 2: Qdrant search + full pipeline |
+| File | State | What's Inside |
+|------|-------|---------------|
+| `embeddings.py` | ✅ | Lazy-load `distiluse-base-multilingual-cased-v2`, LRU cache for queries, batch encoding, `EMBEDDING_DIM=512` |
+| `reranker.py` | ✅ | `BAAI/bge-reranker-base` CrossEncoder, sigmoid normalization, `threshold=0.3`, fallback to top_k |
+| `query_cleaner.py` | ✅ | Thai-safe punctuation stripping, synonym normalization, `SYNONYM_MAP` |
+| `retriever.py` | ✅ | Full pipeline: clean → embed → Qdrant search (top 10) → rerank (top 5) → `build_context()` |
 
 ---
 
@@ -63,109 +78,94 @@ Every file is listed with its current state, what's already written, and what's 
 
 ### Core
 
-| File | State | What's Inside | What's Missing |
-|------|-------|---------------|----------------|
-| `planner.py` | 🟡 | `MAX_ITERATIONS = 10`, `MAX_EXECUTION_TIME = 30`, `AGENT_SYSTEM_PROMPT` template with all placeholders | Phase 5: `create_react_agent` + `AgentExecutor` setup |
-| `evidence.py` | 🟡 | `DiagnosticContext` dataclass, `build_diagnostic_context()` and `format_for_llm()` stubs | Phase 5: parse tool JSONs, extract root cause |
+| File | State | What's Missing |
+|------|-------|----------------|
+| `planner.py` | 🟡 | Phase 5: `create_react_agent` + `AgentExecutor` |
+| `evidence.py` | 🟡 | Phase 5: parse tool JSONs, extract root cause |
 
-### `agent/tools/` — LangChain Tools ✅ Wired to Mocks
+### `agent/tools/` ✅ — Wired to Mocks
 
-All 5 tools are **fully wired** to mock clients via `USE_MOCK_APIS=true`. They produce structured JSON output immediately.
+All 5 tools fully wired to mock clients via `USE_MOCK_APIS=true`.
 
-| File | State | LangChain docstring covers |
-|------|-------|---------------------------|
-| `attendance.py` | ✅ | Attendance history, absent/late days, salary deduction due to attendance |
-| `shift.py` | ✅ | Work hours, shift assignment, which days to work |
-| `deduction.py` | ✅ | Salary deduction breakdown, amounts and reasons |
-| `employee_status.py` | ✅ | Withdrawal eligibility, enrollment status, blacklist check |
-| `sync_schedule.py` | ✅ | Last/next sync time, sync failures, withdrawal limit not updated |
+| File | Covers |
+|------|--------|
+| `attendance.py` | Attendance history, absent/late days |
+| `shift.py` | Work hours, shift assignment |
+| `deduction.py` | Salary deduction breakdown |
+| `employee_status.py` | Withdrawal eligibility, enrollment |
+| `sync_schedule.py` | Last/next sync, failures |
 
-### `agent/clients/base.py` ✅
+### `agent/clients/mock/` ✅ — Fixture data for EMP001
 
-All 5 abstract base classes + shared data models defined:
-`AttendanceSummary`, `ShiftInfo`, `DeductionSummary`, `EmployeeStatus`, `SyncSchedule`
-
-### `agent/clients/mock/` ✅ — Ready to Use
-
-All 5 mock clients return realistic fixture data for `employee_id = "EMP001"`:
-
-| File | Returns |
-|------|---------|
-| `attendance_mock.py` | 4 records: 2 present, 1 late (Mar 25), 1 absent (Mar 26) |
-| `shift_mock.py` | Morning Shift, 09:00–18:00, Mon–Fri |
-| `deduction_mock.py` | Total 600 THB: 500 absent + 100 late |
-| `employee_status_mock.py` | Active, enrolled, eligible, not blacklisted |
-| `sync_schedule_mock.py` | Last sync Mar 27 02:00, next sync Mar 28 02:00, status: synced |
-
-### `agent/clients/` — Real Clients 🟡
-
-All 5 real clients exist as stubs — `raise NotImplementedError("Phase 8")`.
+### `agent/clients/` 🟡 — Real clients stub (`raise NotImplementedError("Phase 8")`)
 
 ---
 
 ## `memory/` — Session + Conversation Memory
 
-| File | State | What's Inside | What's Missing |
-|------|-------|---------------|----------------|
-| `redis_client.py` | 🟡 | Singleton pattern, `check_redis_health()` stub | Phase 1: Redis connection with pooling |
-| `session.py` | 🟡 | `SESSION_TTL_SECONDS = 1800`, `_session_key()` helper, all CRUD stubs | Phase 3: Redis CRUD |
-| `history.py` | 🟡 | `HISTORY_TTL_SECONDS = 7 days`, `MAX_HISTORY_TURNS = 20`, `SUMMARIZATION_THRESHOLD = 15`, `is_history_too_long()` ✅, `_history_key()` ✅ | Phase 3: Redis list push/load |
-| `summarizer.py` | 🟡 | `SUMMARY_TTL_SECONDS`, `_summary_key()` helper, all stubs | Phase 4: LLM summarization |
-
-**Redis key schema already defined:**
-- `chat:session:{tenant_id}:{user_id}`
-- `chat:memory:{tenant_id}:{user_id}:{language}`
-- `chat:summary:{tenant_id}:{user_id}:{language}`
+| File | State | What's Missing |
+|------|-------|----------------|
+| `redis_client.py` | 🟡 | Phase 1: Redis connection with pooling |
+| `session.py` | 🟡 | Phase 3: Redis CRUD (TTL=1800s) |
+| `history.py` | 🟡 | Phase 3: Redis list push/load (TTL=7d, max 20 turns) |
+| `summarizer.py` | 🟡 | Phase 4: LLM summarization at 15 turns |
 
 ---
 
 ## `llm/` — LLM + Language Utilities
 
-| File | State | What's Inside | What's Missing |
-|------|-------|---------------|----------------|
-| `client.py` | 🟡 | `MODEL_NAME = claude-3-haiku`, `DEFAULT_MAX_TOKENS`, `MAX_RETRIES`, `_get_fallback_response()` ✅ in Thai + English | Phase 1: anthropic SDK call with tenacity retry |
-| `intent.py` | 🟡 | `Intent` enum (7 types), `INTENT_KEYWORDS` dict with Thai + English per intent | Phase 2: keyword matching logic |
-| `language.py` | 🟡 | `is_thai()` ✅ (Unicode range check), `detect_language()` returns hardcoded `'th'` with TODO | Phase 2: PyThaiNLP + langdetect |
-| `templates.py` | ✅ | All 6 Thai + English templates fully written: greeting, thanks, goodbye, frustrated, confused, unclear. `get_template()` implemented |
+| File | State | Notes |
+|------|-------|-------|
+| `client.py` | ✅ | `claude-3-haiku`, tenacity retry on rate limit, token logging |
+| `intent.py` | 🟡 | Phase 2: keyword matching (partial — router handles simple intents) |
+| `language.py` | ✅ | Thai Unicode detection (also in `utils/language.py`) |
+| `templates.py` | ✅ | All 6 Thai + English templates: greeting, thanks, goodbye, frustrated, confused, unclear |
+| `providers/anthropic.py` | ✅ | Anthropic SDK, `@retry` on `RateLimitError` |
 
 ---
 
-## `domain/` — Salary Hero Business Logic
+## `utils/` — Utilities
 
-| File | State | What's Inside | What's Missing |
-|------|-------|---------------|----------------|
-| `withdraw_diagnosis.py` | 🟡 | `WithdrawalFailureCase` enum (6 cases), `WithdrawalDiagnosis` dataclass, `_check_blocked()` ✅, `_check_blacklisted()` ✅, `_check_enrolled()` ✅, `_check_sync_pending()` ✅ | Phase 6: `diagnose_withdrawal_failure()` rule logic |
-| `withdraw_formatter.py` | 🟡 | `_THAI_MESSAGES` and `_ENGLISH_MESSAGES` dicts fully populated for all 6 cases | Phase 6: `format_diagnosis()` string builder |
+| File | State | What's Inside |
+|------|-------|---------------|
+| `language.py` | ✅ | `detect_language()` — Thai Unicode regex |
+| `pipeline_logger.py` | ✅ | `PipelineTrace` — writes `logs/faq_trace.log` (readable blocks) + `logs/faq_trace.jsonl` (machine-readable) |
+
+---
+
+## `domain/` — Business Logic
+
+| File | State | What's Missing |
+|------|-------|----------------|
+| `withdraw_diagnosis.py` | 🟡 | Phase 6: `diagnose_withdrawal_failure()` rule engine |
+| `withdraw_formatter.py` | 🟡 | Phase 6: `format_diagnosis()` — messages written for all 6 cases |
 
 ---
 
 ## `observability/` — Tracing & Metrics
 
-| File | State | What's Inside | What's Missing |
-|------|-------|---------------|----------------|
-| `tracing.py` | 🟡 | `setup_tracing()` no-ops gracefully if no API key, `trace_request()` stub | Phase 7: LangSmith integration |
-| `metrics.py` | 🟡 | `RequestMetric` dataclass, `record_metric()` no-op (won't crash), `get_escalation_rate()` stub | Phase 7: metrics backend |
+| File | State | What's Missing |
+|------|-------|----------------|
+| `tracing.py` | 🟡 | Phase 7: LangSmith integration |
+| `metrics.py` | 🟡 | Phase 7: metrics backend |
 
 ---
 
-## `evaluation/` — Offline Metrics
+## `indexers/` — Offline Knowledge Pipeline ✅ Complete
 
-| File | State | What's Inside | What's Missing |
-|------|-------|---------------|----------------|
-| `rag_eval.py` | 🟡 | `RAGEvalResult` dataclass, `run_rag_eval()` stub | Phase 7: ragas integration |
-| `agent_eval.py` | 🟡 | `AgentEvalResult` dataclass, `run_agent_eval()` stub | Phase 7: tool accuracy scorer |
-| `datasets/rag_test_cases.json` | 📄 | 5 Thai + English test cases with expected answers |
-| `datasets/agent_test_cases.json` | 📄 | 3 troubleshooting scenarios with expected tool calls |
+| File | State | What's Inside |
+|------|-------|---------------|
+| `index_faq_csv.py` | ✅ | Embeds Context+Question, upserts to Qdrant with full payload |
+| `merge_data.py` | ✅ | Merges public + company CSVs, deduplicates by question, handles bilingual columns |
+| `inspect_qdrant.py` | ✅ | Lists collections with counts, shows sample records |
 
 ---
 
-## `indexers/` — Offline Knowledge Pipeline
+## `scripts/` — Dev Tools
 
-| File | State | What's Inside | What's Missing |
-|------|-------|---------------|----------------|
-| `index_faq_csv.py` | 🟡 | CLI arg parsing (`--file`, `--company`, `--language`), `_read_csv()` ✅, CSV column validation | Phase 2: embed + Qdrant upsert |
-| `merge_data.py` | 🟡 | CLI arg parsing, file path constants | Phase 8: deduplication + merge |
-| `inspect_qdrant.py` | 🟡 | CLI arg parsing (`--collection`, `--limit`) | Phase 2: Qdrant list/inspect |
+| File | State | What's Inside |
+|------|-------|---------------|
+| `scripts/test_faq.py` | ✅ | Batch tester — runs 31 Thai questions, prints coverage table, writes to `logs/faq_trace.log` |
 
 ---
 
@@ -173,8 +173,8 @@ All 5 real clients exist as stubs — `raise NotImplementedError("Phase 8")`.
 
 | File | State | What's Inside |
 |------|-------|---------------|
-| `tenants.yaml` | 📄 | HNS tenant fully configured: company_id, languages, LINE tokens, vector collections, feature flags, handoff method |
-| `incident_data.yaml` | 📄 | 3 active incidents: salary delay, maintenance window (Apr 5), iOS 17 login bug |
+| `tenants.yaml` | 📄 | HNS tenant: company_id, languages, LINE tokens, vector collections, feature flags |
+| `incident_data.yaml` | 📄 | 3 active incidents: salary delay, maintenance window, iOS 17 login bug |
 
 ---
 
@@ -183,8 +183,11 @@ All 5 real clients exist as stubs — `raise NotImplementedError("Phase 8")`.
 | File | State | Rows | Content |
 |------|-------|------|---------|
 | `data/faqs/public_faq.csv` | 📄 | 9 | General Salary Hero Q&A in Thai |
-| `data/faqs/public_incident.csv` | 📄 | 0 | Empty template |
-| `data/company/hns/hns_company.csv` | 📄 | 4 | HNS-specific: withdrawal hours, holiday rules, transfer timing, eligibility |
+| `data/company/hns/hns_company.csv` | 📄 | 73 | HNS-specific bilingual FAQ (TH/EN columns) |
+| `data/merged/hns_th.csv` | 📄 | 73 | Merged + normalized Thai FAQ (Qdrant source) |
+
+**Qdrant collections:**
+- `hns_th` — 73 documents indexed ✅
 
 ---
 
@@ -192,53 +195,68 @@ All 5 real clients exist as stubs — `raise NotImplementedError("Phase 8")`.
 
 ### Unit Tests
 
-| File | State | Runnable Now? |
-|------|-------|---------------|
+| File | State | Runnable? |
+|------|-------|-----------|
+| `test_query_cleaner.py` | 🧪 | ✅ All 15 pass |
+| `test_embeddings.py` | 🧪 | ✅ All 4 pass (mocked model) |
 | `test_intent.py` | 🧪 | After Phase 2 |
-| `test_language.py` | 🧪 | `test_is_thai_*` run now; `test_detect_language` after Phase 2 |
-| `test_router.py` | 🧪 | After Phase 3 |
+| `test_language.py` | 🧪 | ✅ `test_is_thai_*` pass |
+| `test_router.py` | 🧪 | ✅ After Phase 3 |
 | `test_safety.py` | 🧪 | After Phase 3 |
-| `test_reranker.py` | 🧪 | `TestSigmoid.*` runs now ✅; reranker tests after Phase 2 |
-| `test_withdraw_diagnosis.py` | 🧪 | `TestHelperFunctions.*` runs now ✅; full diagnosis after Phase 6 |
+| `test_reranker.py` | 🧪 | ✅ `TestSigmoid.*` passes |
+| `test_withdraw_diagnosis.py` | 🧪 | ✅ `TestHelperFunctions.*` passes |
 
 ### Integration Tests
 
-| File | State | Runnable Now? |
-|------|-------|---------------|
-| `test_agent_tools.py` | 🧪 | **All 5 tool tests run now ✅** (mock clients) |
-| `test_rag_pipeline.py` | 🧪 | After Phase 2 (needs Qdrant populated) |
-
-### Fixtures
-
-| File | Content |
-|------|---------|
-| `tests/fixtures/sample_messages.json` | 10 Thai + English messages covering all intent types |
-| `tests/fixtures/mock_api_responses.json` | Complete mock data for all 5 APIs for EMP001 |
+| File | State | Runnable? |
+|------|-------|-----------|
+| `test_agent_tools.py` | 🧪 | ✅ All 5 tool tests pass (mock clients) |
+| `test_rag_pipeline.py` | 🧪 | ✅ Runnable (Qdrant populated) |
 
 ---
 
-## What You Can Run Right Now
+## FAQ Pipeline — Test Results (2026-04-01)
+
+Run: `PYTHONPATH=. python scripts/test_faq.py`
+
+```
+Total: 31  |  Answered: 30  |  Escalated (no data): 1
+Coverage: 97%
+```
+
+**Only gap:** "หัวหน้าตั้งกะงานให้แล้วแต่ยอดไม่ขึ้น" — needs a row added to `hns_company.csv`
+
+---
+
+## What to Run Now
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Start Gradio test UI
+PYTHONPATH=. python main.py gradio
 
-# These pass immediately (no external services needed)
-pytest tests/integration/test_agent_tools.py -v
-pytest tests/unit/test_reranker.py::TestSigmoid -v
-pytest tests/unit/test_withdraw_diagnosis.py::TestHelperFunctions -v
-pytest tests/unit/test_language.py::TestIsThai -v
+# Run full FAQ test (31 questions)
+PYTHONPATH=. python scripts/test_faq.py
+
+# Index FAQs (after CSV changes)
+PYTHONPATH=. python indexers/merge_data.py --company hns --language th
+PYTHONPATH=. python indexers/index_faq_csv.py --file data/merged/hns_th.csv --company hns --language th
+
+# Check Qdrant
+PYTHONPATH=. python indexers/inspect_qdrant.py
+
+# Run unit tests
+pytest tests/unit/ -v
 ```
 
 ---
 
-## Phase 1 Starting Point
+## Phase 3 Starting Point
 
-The next thing to implement is **Phase 1: Foundation**.
+The next phase is **Phase 3: Orchestrator + LINE Webhook**.
 Start with these files in order:
 
-1. `memory/redis_client.py` — Redis singleton
-2. `llm/client.py` — Claude wrapper
-3. `interface/fastapi_app.py` — complete LINE webhook
-
-All three can be independently developed and tested before wiring them together in `pipeline/orchestrator.py`.
+1. `memory/redis_client.py` — Redis singleton + health check
+2. `memory/session.py` — session CRUD (TTL 30 min)
+3. `memory/history.py` — conversation history (TTL 7 days)
+4. `pipeline/orchestrator.py` — wire router → safety → retrieve → generate
+5. `interface/fastapi_app.py` — complete LINE webhook with HMAC validation

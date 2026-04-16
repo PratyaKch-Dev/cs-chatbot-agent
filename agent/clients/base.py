@@ -4,10 +4,6 @@ Abstract base classes for all HR API clients.
 Two modes:
     Mock  — pass employee_id per method call, data loaded from users.json
     Real  — pass token at init, backend extracts employee_id from token
-
-Interface keeps employee_id in signatures so LangChain tools work identically
-in both modes. Real clients receive the token at construction and ignore
-employee_id (the backend resolves the user from the Authorization header).
 """
 
 from abc import ABC, abstractmethod
@@ -22,7 +18,7 @@ class AttendanceRecord:
     date: str
     check_in: Optional[str]
     check_out: Optional[str]
-    status: str                 # present | absent | late | half_day
+    remarks: Optional[str] = None   # e.g. "ลืม check in", "บัตรเสีย — HR บันทึกให้"
 
 
 @dataclass
@@ -32,14 +28,6 @@ class AttendanceSummary:
     total_present: int
     total_absent: int
     total_late: int
-
-
-@dataclass
-class ShiftInfo:
-    shift_name: str
-    start_time: str
-    end_time: str
-    days: list[str]
 
 
 @dataclass
@@ -63,7 +51,6 @@ class EmployeeStatus:
     employee_id: str
     name: str
     status: str                 # active | inactive | suspended
-    enrolled: bool
     eligible_for_withdrawal: bool
     blacklisted: bool
     enrollment_date: Optional[str]
@@ -77,34 +64,29 @@ class SyncSchedule:
     sync_status: str            # synced | pending | failed
 
 
+@dataclass
+class EmployeeData:
+    """
+    Returned by the first API call — profile, sync, deductions, pay cycle,
+    and a short attendance snapshot (≤7 days, from paycycle start).
+    """
+    employee_id: str
+    profile: dict
+    sync: dict
+    deductions: dict
+    paycycle: dict              # {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}
+    attendance_snapshot: dict   # filtered to max(paycycle_start, today-7d) → today
+
+
 # ── Abstract client interfaces ────────────────────────────────────────────────
-# employee_id is used by mock clients (JSON lookup).
-# Real clients receive token at __init__ and let the backend resolve the user.
+
+class BaseEmployeeDataClient(ABC):
+    @abstractmethod
+    def get_employee_data(self, employee_id: str) -> EmployeeData: ...
+
 
 class BaseAttendanceClient(ABC):
     @abstractmethod
     def get_attendance(
         self, employee_id: str, date_from: str, date_to: str
-    ) -> AttendanceSummary: ...
-
-
-class BaseShiftClient(ABC):
-    @abstractmethod
-    def get_shift(self, employee_id: str) -> ShiftInfo: ...
-
-
-class BaseDeductionClient(ABC):
-    @abstractmethod
-    def get_deductions(
-        self, employee_id: str, period: str
-    ) -> DeductionSummary: ...
-
-
-class BaseEmployeeStatusClient(ABC):
-    @abstractmethod
-    def get_status(self, employee_id: str) -> EmployeeStatus: ...
-
-
-class BaseSyncScheduleClient(ABC):
-    @abstractmethod
-    def get_sync_schedule(self, employee_id: str) -> SyncSchedule: ...
+    ) -> dict: ...

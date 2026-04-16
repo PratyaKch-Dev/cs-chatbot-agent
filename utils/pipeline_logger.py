@@ -73,6 +73,12 @@ class PipelineTrace:
             for i, doc in enumerate(documents)
         ]
 
+    def set_troubleshooting(self, employee_id: str, root_cause: str, tools_used: list[str]) -> None:
+        self.collection      = f"agent:{employee_id}"
+        self.query_cleaned   = root_cause
+        self._employee_id    = employee_id
+        self._tools_used     = tools_used
+
     def set_answer(self, text: str, grounding_score: float, was_escalated: bool) -> None:
         self.answer = text
         self.grounding_score = round(grounding_score, 4)
@@ -88,9 +94,10 @@ class PipelineTrace:
 
 
 def _write_readable(t: PipelineTrace) -> None:
-    dt = datetime.fromtimestamp(t.timestamp).strftime("%Y-%m-%d %H:%M:%S")
-    escalated = "  *** ESCALATED ***" if t.was_escalated else ""
-    score_bar = _score_bar(t.grounding_score)
+    dt          = datetime.fromtimestamp(t.timestamp).strftime("%Y-%m-%d %H:%M:%S")
+    escalated   = "  *** ESCALATED ***" if t.was_escalated else ""
+    route_label = t.route.replace("Route.", "")
+    is_ts       = "TROUBLESHOOTING" in t.route.upper()
 
     lines = [
         "",
@@ -98,34 +105,43 @@ def _write_readable(t: PipelineTrace) -> None:
         f"  {dt}  |  {t.tenant_id}/{t.language}  |  {t.duration_ms}ms",
         SEP,
         f"  QUERY    : {t.query}",
+        f"  ROUTE    : {route_label}  ({t.route_reason})",
     ]
 
-    if t.query_cleaned != t.query:
-        lines.append(f"  CLEANED  : {t.query_cleaned}")
-
-    route_label = t.route.replace("Route.", "")
-    lines.append(f"  ROUTE    : {route_label}  ({t.route_reason})")
-    lines.append(f"  COLLECT  : {t.collection}")
-    lines.append("")
-
-    if t.hits:
-        lines.append("  RETRIEVED:")
-        for h in t.hits:
-            lines.append(f"    #{h.rank}  score={h.score:.3f}  Q: {h.question}")
-            lines.append(f"             A: {h.answer_preview}")
+    if is_ts:
+        emp_id     = getattr(t, "_employee_id", "?")
+        tools_used = getattr(t, "_tools_used", [])
+        root_cause = t.query_cleaned   # stored in set_troubleshooting
+        lines += [
+            f"  EMPLOYEE : {emp_id}",
+            f"  ROOT     : {root_cause}",
+            "",
+            "  TOOLS CALLED:",
+        ]
+        for i, tool in enumerate(tools_used, 1):
+            lines.append(f"    #{i}  {tool}")
+        if not tools_used:
+            lines.append("    (none)")
     else:
-        lines.append("  RETRIEVED: (none)")
+        if t.query_cleaned != t.query:
+            lines.append(f"  CLEANED  : {t.query_cleaned}")
+        lines += ["", f"  COLLECT  : {t.collection}", "", "  RETRIEVED:"]
+        if t.hits:
+            for h in t.hits:
+                lines.append(f"    #{h.rank}  score={h.score:.3f}  Q: {h.question}")
+                lines.append(f"             A: {h.answer_preview}")
+        else:
+            lines.append("    (none)")
 
+    score_bar = _score_bar(t.grounding_score)
     lines += [
         "",
         f"  GROUNDING: {score_bar}  {t.grounding_score:.2f}{escalated}",
         "",
         "  ANSWER:",
     ]
-
     for line in t.answer.splitlines():
         lines.append(f"    {line}")
-
     lines.append(SEP)
 
     with open(LOG_FILE, "a", encoding="utf-8") as f:

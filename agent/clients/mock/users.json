@@ -5,35 +5,32 @@
       "employee_id": "EMP001",
       "name": "สมชาย ใจดี",
       "status": "active",
-      "enrolled": true,
       "eligible_for_withdrawal": true,
       "blacklisted": false,
       "enrollment_date": "2025-01-15"
+    },
+    "paycycle": {
+      "start_date": "2026-03-01",
+      "end_date": "2026-03-31"
     },
     "attendance": {
       "total_present": 18,
       "total_absent": 1,
       "total_late": 2,
       "records": [
-        {"date": "2026-03-24", "check_in": "08:55", "check_out": "18:02", "status": "present"},
-        {"date": "2026-03-25", "check_in": "09:20", "check_out": "18:00", "status": "late"},
-        {"date": "2026-03-26", "check_in": null, "check_out": null, "status": "absent"},
-        {"date": "2026-03-27", "check_in": "08:50", "check_out": "18:05", "status": "present"},
-        {"date": "2026-03-28", "check_in": "09:10", "check_out": "18:00", "status": "late"}
+        {"date": "2026-03-24", "check_in": "08:55", "check_out": "18:02", "remarks": null},
+        {"date": "2026-03-25", "check_in": "09:20", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-26", "check_in": "09:20", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-27", "check_in": "08:50", "check_out": "18:05", "remarks": null},
+        {"date": "2026-03-28", "check_in": "09:10", "check_out": "18:00", "remarks": null}
       ]
-    },
-    "shift": {
-      "shift_name": "Morning Shift",
-      "start_time": "09:00",
-      "end_time": "18:00",
-      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     },
     "deductions": {
       "period": "2026-03",
       "total_deducted": 600.0,
       "items": [
         {"type": "absent", "amount": 500.0, "description": "หักขาดงาน 1 วัน", "date": "2026-03-26"},
-        {"type": "late", "amount": 100.0, "description": "หักมาสาย 2 ครั้ง", "date": "2026-03-25"}
+        {"type": "late",   "amount": 100.0, "description": "หักมาสาย 2 ครั้ง", "date": "2026-03-25"}
       ]
     },
     "sync": {
@@ -44,32 +41,29 @@
   },
 
   "EMP002": {
-    "_scenario": "Suspended / blocked account",
+    "_scenario": "inactive / blocked account",
     "profile": {
       "employee_id": "EMP002",
       "name": "วิไล รักงาน",
-      "status": "suspended",
-      "enrolled": true,
+      "status": "inactive",
       "eligible_for_withdrawal": false,
       "blacklisted": false,
       "enrollment_date": "2024-06-01"
+    },
+    "paycycle": {
+      "start_date": "2026-03-01",
+      "end_date": "2026-03-31"
     },
     "attendance": {
       "total_present": 20,
       "total_absent": 0,
       "total_late": 0,
       "records": [
-        {"date": "2026-03-24", "check_in": "08:45", "check_out": "18:00", "status": "present"},
-        {"date": "2026-03-25", "check_in": "08:50", "check_out": "18:00", "status": "present"},
-        {"date": "2026-03-26", "check_in": "08:55", "check_out": "18:00", "status": "present"},
-        {"date": "2026-03-27", "check_in": "08:40", "check_out": "18:00", "status": "present"}
+        {"date": "2026-03-24", "check_in": "08:45", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-25", "check_in": "08:50", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-26", "check_in": "08:55", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-27", "check_in": "08:40", "check_out": "18:00", "remarks": null}
       ]
-    },
-    "shift": {
-      "shift_name": "Morning Shift",
-      "start_time": "09:00",
-      "end_time": "18:00",
-      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     },
     "deductions": {
       "period": "2026-03",
@@ -84,44 +78,39 @@
   },
 
   "EMP003": {
-    "_scenario": "Not enrolled in Salary Hero",
+    "_scenario": "Attendance anomalies — missed check-ins with system remarks",
     "profile": {
       "employee_id": "EMP003",
       "name": "ประยุทธ์ มีสุข",
       "status": "active",
-      "enrolled": false,
-      "eligible_for_withdrawal": false,
+      "eligible_for_withdrawal": true,
       "blacklisted": false,
-      "enrollment_date": null
+      "enrollment_date": "2025-06-01"
+    },
+    "paycycle": {
+      "start_date": "2026-03-01",
+      "end_date": "2026-03-31"
     },
     "attendance": {
-      "total_present": 15,
-      "total_absent": 3,
-      "total_late": 1,
+      "total_present": 17,
+      "total_absent": 0,
+      "total_late": 0,
       "records": [
-        {"date": "2026-03-24", "check_in": "09:00", "check_out": "18:00", "status": "present"},
-        {"date": "2026-03-25", "check_in": null, "check_out": null, "status": "absent"},
-        {"date": "2026-03-26", "check_in": "09:00", "check_out": "18:00", "status": "present"},
-        {"date": "2026-03-27", "check_in": "09:30", "check_out": "18:00", "status": "late"}
+        {"date": "2026-03-24", "check_in": "08:50", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-25", "check_in": null,    "check_out": "18:05", "remarks": "ลืม check in"},
+        {"date": "2026-03-26", "check_in": "09:00", "check_out": null,    "remarks": "ลืม check out"},
+        {"date": "2026-03-27", "check_in": null,    "check_out": null,    "remarks": "บัตรพนักงานเสีย — HR บันทึกให้"},
+        {"date": "2026-03-28", "check_in": "08:55", "check_out": "18:00", "remarks": null}
       ]
-    },
-    "shift": {
-      "shift_name": "Day Shift",
-      "start_time": "09:00",
-      "end_time": "18:00",
-      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     },
     "deductions": {
       "period": "2026-03",
-      "total_deducted": 1600.0,
-      "items": [
-        {"type": "absent", "amount": 1500.0, "description": "หักขาดงาน 3 วัน", "date": "2026-03-20"},
-        {"type": "late", "amount": 100.0, "description": "หักมาสาย 1 ครั้ง", "date": "2026-03-27"}
-      ]
+      "total_deducted": 0.0,
+      "items": []
     },
     "sync": {
-      "last_sync": "2026-03-27T02:00:00",
-      "next_sync": "2026-03-28T02:00:00",
+      "last_sync": "2026-03-31T02:00:00",
+      "next_sync": "2026-04-01T02:00:00",
       "sync_status": "synced"
     }
   },
@@ -132,27 +121,24 @@
       "employee_id": "EMP004",
       "name": "นภาพร ทองดี",
       "status": "active",
-      "enrolled": true,
       "eligible_for_withdrawal": false,
       "blacklisted": false,
       "enrollment_date": "2025-03-01"
+    },
+    "paycycle": {
+      "start_date": "2026-03-01",
+      "end_date": "2026-03-31"
     },
     "attendance": {
       "total_present": 22,
       "total_absent": 0,
       "total_late": 0,
       "records": [
-        {"date": "2026-03-24", "check_in": "08:30", "check_out": "18:00", "status": "present"},
-        {"date": "2026-03-25", "check_in": "08:30", "check_out": "18:00", "status": "present"},
-        {"date": "2026-03-26", "check_in": "08:30", "check_out": "18:00", "status": "present"},
-        {"date": "2026-03-27", "check_in": "08:30", "check_out": "18:00", "status": "present"}
+        {"date": "2026-03-24", "check_in": "08:30", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-25", "check_in": "08:30", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-26", "check_in": "08:30", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-27", "check_in": "08:30", "check_out": "18:00", "remarks": null}
       ]
-    },
-    "shift": {
-      "shift_name": "Early Shift",
-      "start_time": "08:30",
-      "end_time": "17:30",
-      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     },
     "deductions": {
       "period": "2026-03",
@@ -166,40 +152,74 @@
     }
   },
 
+  "EMP006": {
+    "_scenario": "Low balance — eligible but paycycle just started",
+    "profile": {
+      "employee_id": "EMP006",
+      "name": "มานะ ตั้งใจ",
+      "status": "active",
+      "eligible_for_withdrawal": false,
+      "blacklisted": false,
+      "enrollment_date": "2026-02-01"
+    },
+    "paycycle": {
+      "start_date": "2026-04-01",
+      "end_date": "2026-04-30"
+    },
+    "attendance": {
+      "total_present": 20,
+      "total_absent": 0,
+      "total_late": 0,
+      "records": [
+        {"date": "2026-03-24", "check_in": "08:55", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-25", "check_in": "09:00", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-26", "check_in": "08:50", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-27", "check_in": "09:05", "check_out": "18:00", "remarks": null}
+      ]
+    },
+    "deductions": {
+      "period": "2026-04",
+      "total_deducted": 0.0,
+      "items": []
+    },
+    "sync": {
+      "last_sync": "2026-03-31T02:00:00",
+      "next_sync": "2026-04-01T02:00:00",
+      "sync_status": "synced"
+    }
+  },
+
   "EMP005": {
     "_scenario": "Blacklisted user",
     "profile": {
       "employee_id": "EMP005",
       "name": "กิตติ แสนดี",
       "status": "active",
-      "enrolled": true,
       "eligible_for_withdrawal": false,
       "blacklisted": true,
       "enrollment_date": "2024-09-15"
+    },
+    "paycycle": {
+      "start_date": "2026-03-01",
+      "end_date": "2026-03-31"
     },
     "attendance": {
       "total_present": 16,
       "total_absent": 2,
       "total_late": 3,
       "records": [
-        {"date": "2026-03-24", "check_in": "09:00", "check_out": "18:00", "status": "present"},
-        {"date": "2026-03-25", "check_in": null, "check_out": null, "status": "absent"},
-        {"date": "2026-03-26", "check_in": "09:00", "check_out": "18:00", "status": "present"},
-        {"date": "2026-03-27", "check_in": "09:45", "check_out": "18:00", "status": "late"}
+        {"date": "2026-03-24", "check_in": "09:00", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-25", "check_in": null,    "check_out": null,    "remarks": null},
+        {"date": "2026-03-26", "check_in": "09:00", "check_out": "18:00", "remarks": null},
+        {"date": "2026-03-27", "check_in": "09:45", "check_out": "18:00", "remarks": null}
       ]
-    },
-    "shift": {
-      "shift_name": "Morning Shift",
-      "start_time": "09:00",
-      "end_time": "18:00",
-      "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     },
     "deductions": {
       "period": "2026-03",
       "total_deducted": 1300.0,
       "items": [
         {"type": "absent", "amount": 1000.0, "description": "หักขาดงาน 2 วัน", "date": "2026-03-18"},
-        {"type": "late", "amount": 300.0, "description": "หักมาสาย 3 ครั้ง", "date": "2026-03-27"}
+        {"type": "late",   "amount": 300.0,  "description": "หักมาสาย 3 ครั้ง", "date": "2026-03-27"}
       ]
     },
     "sync": {

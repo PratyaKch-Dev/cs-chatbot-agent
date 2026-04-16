@@ -1,8 +1,9 @@
-"""LangChain tool — attendance records lookup."""
+"""LangChain tool — full attendance records for a custom date range (max 30 days, configurable)."""
 
-import os
 import json
-from langchain.tools import tool
+import os
+
+from langchain_core.tools import tool
 
 if os.environ.get("USE_MOCK_APIS", "true").lower() == "true":
     from agent.clients.mock.attendance_mock import MockAttendanceClient as _Client
@@ -13,36 +14,22 @@ _client = _Client()
 
 
 @tool
-def get_attendance_records(employee_id: str, date_from: str, date_to: str) -> str:
+def get_attendance(employee_id: str, date_from: str, date_to: str) -> str:
     """
-    Get attendance records for an employee within a date range.
+    Get full attendance records for a custom date range (YYYY-MM-DD).
 
-    Use this tool when the user asks about:
-    - Attendance history (present/absent/late)
-    - Why salary was deducted due to attendance
-    - Number of absent or late days
+    The API enforces a maximum window of MAX_ATTENDANCE_DAYS (default 30, configurable).
+    If date_from is further back than allowed, it is clamped automatically.
 
-    Args:
-        employee_id: The employee's ID
-        date_from: Start date in YYYY-MM-DD format
-        date_to: End date in YYYY-MM-DD format
+    Call this tool only when:
+      - The attendance_snapshot from get_employee_data is insufficient
+        (e.g. user asks about a specific past period or anomalies need more context)
+      - You need more than 7 days of history
 
-    Returns:
-        JSON string with attendance records and summary
+    Use paycycle.start_date from get_employee_data as date_from for the current cycle.
     """
-    result = _client.get_attendance(employee_id, date_from, date_to)
-    return json.dumps({
-        "employee_id": result.employee_id,
-        "total_present": result.total_present,
-        "total_absent": result.total_absent,
-        "total_late": result.total_late,
-        "records": [
-            {
-                "date": r.date,
-                "check_in": r.check_in,
-                "check_out": r.check_out,
-                "status": r.status,
-            }
-            for r in result.records
-        ],
-    }, ensure_ascii=False)
+    try:
+        result = _client.get_attendance(employee_id, date_from, date_to)
+        return json.dumps(result, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"error": str(e)})

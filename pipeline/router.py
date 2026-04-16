@@ -34,8 +34,27 @@ TEMPLATE_INTENTS = {"greeting", "thanks", "goodbye", "frustrated", "confused", "
 # Keywords that signal troubleshooting (employee-specific data needed)
 # TODO Phase 5: replace with proper classifier
 TROUBLESHOOTING_KEYWORDS = {
-    "th": ["เงินเดือน", "หักเงิน", "ขาดงาน", "กะ", "เวลา", "ซิงค์", "attendance", "shift"],
-    "en": ["attendance", "shift", "deduction", "payroll", "sync", "schedule", "not working"],
+    "th": [
+        # withdrawal / balance issues
+        "เบิกไม่ได้", "เบิกเงินไม่ได้", "ยอด 0", "ยอด0", "0 บาท", "0บาท",
+        "แสดง 0", "แสดงผล 0", "ไม่มียอด", "ยอดไม่ขึ้น", "เงินไม่ขึ้น",
+        "เบิกไม่ผ่าน", "ทำไมเบิกไม่ได้",
+        "ยอดเบิก", "เป็น 0", "เป็น0", "ยอดเป็น 0", "ยอดเป็น0",
+        # account / system issues
+        "เงินเดือน", "หักเงิน", "ขาดงาน", "กะ", "ซิงค์", "ลงทะเบียน",
+        "สถานะ", "บัญชีถูก", "ระงับ",
+        # attendance queries — needs live employee data, not FAQ
+        "การเข้างาน", "เข้างาน", "check in", "check out", "เช็คอิน", "เช็คเอาท์",
+        "ประวัติการเข้างาน", "ประวัติเข้างาน", "บันทึกเวลา", "ลืม punch",
+        "สายกี่วัน", "ขาดกี่วัน", "มาสาย",
+    ],
+    "en": [
+        "can't withdraw", "cannot withdraw", "zero balance", "balance 0",
+        "withdrawal failed", "not eligible",
+        "attendance", "check in", "check out", "punch in", "punch out",
+        "attendance record", "attendance history", "missed punch",
+        "deduction", "payroll", "sync", "schedule", "not working",
+    ],
 }
 
 
