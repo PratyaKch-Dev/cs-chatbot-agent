@@ -7,45 +7,47 @@
 ```
 User message
       │
- Fast LLM (Claude Haiku, max_tokens=10, ~150ms)
+ Fast LLM (configurable via LLM_PROVIDER, max_tokens=250, ~150ms)
+ + active context from Redis (topic, remark, last_root_cause)
       │
- Returns one specific label:
+ Returns JSON: { intent, conv_state, followup_type, confidence, reason }
       │
-  ┌──────────┬─────────┬──────────┬────────────┬──────────────┐
-  │ greeting │  thanks │  goodbye │ frustrated │   confused   │
-  │ missing_ │         │          │            │              │
-  │  info    │         │          │            │              │
-  └────┬─────┴────┬────┴─────┬────┴──────┬─────┴───────┬──────┘
-       │          │          │           │             │
-       └──────────┴──────────┴───────────┘             │
-                       CHITCHAT / MISSING_INFO          │
-                  chitchat_templates.yaml               │
-                  (look up by label, no LLM)            │
-                                                        │
-  ┌─────────────────────────────────┐     ┌─────────────┴───────┐
-  │     troubleshooting_*           │     │         faq         │
-  │                                 │     │                     │
-  │  troubleshooting_withdrawal     │     │  Vector DB search   │
-  │  troubleshooting_attendance     │     │  → LLM answer       │
-  │  troubleshooting_account        │     └─────────────────────┘
-  │  troubleshooting_deduction      │
-  └──────────────┬──────────────────┘
-                 │
-         sub_type → tool strategy
-         (deterministic, no ReAct agent)
-                 │
-         evidence.py → root_cause
-                 │
-         answer_templates.yaml
+ PRIORITY RULES:
+   1. greeting/thanks/goodbye/frustrated/confused → always CHITCHAT, ignore active context
+   2. troubleshooting_recheck only for explicit recheck phrases
+   3. troubleshooting_withdrawal for zero balance / can't withdraw
+   4. faq for general questions
+      │
+  ┌───────────────┬────────────────┬────────────────────────────┐
+  │   CHITCHAT    │  MISSING_INFO  │     TROUBLESHOOTING        │
+  │               │                │                            │
+  │  greeting     │  missing_info  │  troubleshooting_          │
+  │  thanks       │                │  withdrawal                │
+  │  goodbye      │                │  (add more subtypes here)  │
+  │  frustrated   │                │                            │
+  │  confused     │                │                            │
+  └───────────────┴────────────────┴────────────────────────────┘
+                                               │
+                                       sub_type → tool strategy
+                                       evidence.py → root_cause
+                                       answer_templates.yaml
+                             ┌─────────────────┴──────┐
+                             │          FAQ            │
+                             │   Vector DB search      │
+                             │   → rerank → LLM answer │
+                             └─────────────────────────┘
 ```
 
 | Detail | |
 |--------|---|
-| **Primary** | LLM classifier — handles Thai, English, mixed language, typos, context |
-| **Fallback** | Intent keyword matching + troubleshooting keyword list — used if LLM call fails |
+| **Primary** | LLM classifier — handles Thai, English, mixed language, typos, active context |
+| **Fallback** | Keyword matching — used if LLM call fails |
+| **Priority rule** | Greetings/chitchat always override active context (no false recheck) |
 | **Chitchat labels** | `greeting / thanks / goodbye / frustrated / confused` → CHITCHAT |
 | **Missing info label** | `missing_info` → MISSING_INFO |
-| **Troubleshooting labels** | `troubleshooting_withdrawal / _attendance / _account / _deduction` → TROUBLESHOOTING + sub_type |
+| **Troubleshooting labels** | `troubleshooting_withdrawal` → TROUBLESHOOTING (add more subtypes in `_TS_TOPIC`) |
+| **Conv state** | `new_query` / `followup` / `ambiguous` — drives multi-turn path |
+| **Followup type** | `faq_followup` / `troubleshooting_recheck` / `null` |
 
 ---
 
@@ -111,13 +113,13 @@ User Question
       │
  Embed (cached LRU 500)
       │
- Qdrant Search (top 10)
+ Qdrant Search (top 5)
       │
  BGE Reranker (top 5, threshold 0.3)
       │
  Build Context
       │
- Claude (Haiku) → generate answer
+ LLM → generate answer (configurable via LLM_PROVIDER)
       │
  Grounding Check (word-overlap score)
       │
@@ -175,14 +177,12 @@ Run: `PYTHONPATH=. python scripts/test_faq.py --tenant hns --lang th`
 ```
 User: "ทำไมเบิกเงินไม่ได้ครับ"
         │
-    Router (Haiku) → "troubleshooting_withdrawal"
+    Router → "troubleshooting_withdrawal"
         │
     sub_type → tool strategy (deterministic):
         │
   troubleshooting_withdrawal  →  get_employee_data + get_attendance
-  troubleshooting_attendance  →  get_employee_data + get_attendance
-  troubleshooting_account     →  get_employee_data only
-  troubleshooting_deduction   →  get_employee_data only
+  (add more: register in _TS_TOPIC in orchestrator.py + _LABEL_TO_ROUTE in router.py)
         │
   ┌─ get_employee_data ──────────────────────────────────────┐
   │  • profile          → blacklisted? suspended? status?     │
@@ -218,7 +218,7 @@ User: "ทำไมเบิกเงินไม่ได้ครับ"
 
 | Step | Detail |
 |------|--------|
-| **Router sub-type** | Haiku classifies into `troubleshooting_withdrawal / _attendance / _account / _deduction` |
+| **Router sub-type** | LLM classifies into `troubleshooting_withdrawal` (more added via `_TS_TOPIC`) |
 | **Tool strategy** | Deterministic per sub-type — no ReAct agent, no Sonnet needed for diagnosis |
 | **get_employee_data** | Always called — profile, sync, deductions, paycycle in one API call |
 | **get_attendance** | Called only when sub-type needs it (withdrawal / attendance) |
@@ -355,4 +355,283 @@ Bot:  ตรวจสอบข้อมูลของ มานะ ตั้ง
       - ปิดแอปแล้วเปิดใหม่เพื่อรีเฟรชยอดเงิน
       - ตรวจสอบว่ามีสัญญาณอินเทอร์เน็ต
       - หากยังมีปัญหา ติดต่อแอดมิน Salary Hero ได้เลยค่ะ
+```
+
+---
+
+## Multi-turn Conversation Architecture
+
+> All interfaces (Gradio, LINE webhook) call `pipeline/orchestrator.py → handle_message()` as the single entry point.
+
+### Full Request Flow
+
+```
+User sends message
+        │
+        ▼
+1. Session check (Redis)
+   key: chat:session:{tenant}:{user}
+   - same session? continue
+   - expired? start new session
+             session continuity resets
+             active context, summary, and cache follow their own TTL rules
+        │
+        ▼
+2. Load memory from Redis
+   - History:        chat:history:{tenant}:{user}:{lang}   → last 3–5 turns
+   - Summary:        chat:summary:{tenant}:{user}:{lang}   → recap of older turns
+   - Active context: chat:context:{tenant}:{user}          → current topic / open case / remark
+   - Context cache:  chat:cache:{tenant}:{user}            → last FAQ docs / last diagnosis
+        │
+        ▼
+3. Router  (fast LLM — Haiku / Gemini Flash)
+   Input:
+   - current user message
+   - short history (last 3 turns)
+   - summary
+   - active context  ← includes topic, remark, last_user_need, last_root_cause
+
+   Router outputs:
+   ┌─────────────────────────────────────────────────────────┐
+   │  intent:      faq / troubleshooting / chitchat /        │
+   │               missing_info                              │
+   │                                                         │
+   │  conv_state:  new_query                                 │
+   │               followup  →  faq_followup                 │
+   │                         →  troubleshooting_recheck      │
+   │               ambiguous  →  resolve to followup         │
+   │                          →  or escalate to missing_info │
+   │                                                         │
+   │  confidence:  0.0 – 1.0                                 │
+   │  reason:      short explanation string                  │
+   └─────────────────────────────────────────────────────────┘
+        │
+        ├──────────────────────────────────────────────┐
+        │                                              │
+        ▼                                              ▼
+4A. conv_state = followup / ambiguous             4B. conv_state = new_query
+        │                                              │
+        ├── faq_followup                               ├── chitchat / greeting
+        │   e.g. "ผมใช้ iOS"                           │   → YAML template, no LLM
+        │   - load active context (topic + remark)     │
+        │   - update remark with new detail            ├── FAQ
+        │   - rerun retrieval if follow-up changes:    │   → vector search
+        │       platform / company / product /         │   → rerank
+        │       policy target / date scope /           │   → LLM answer
+        │       issue subtype                          │   → grounding check
+        │   - reuse cache otherwise                    │
+        │     ("ครับ" / "ขอลิงก์อีกที" → no rerun)    ├── Troubleshooting
+        │                                              │   → fetch live API data
+        ├── troubleshooting_recheck                    │   → deterministic diagnosis
+        │   e.g. "แจ้ง HR แล้ว ฝากเช็คอีกที"           │   → template or LLM answer
+        │   - load active case + employee_id + remark  │
+        │   - call live API again (always)             └── Missing info
+        │   - compare new vs old root_cause                → ask only for the one
+        │     fixed     → "ตอนนี้ปกติแล้วค่ะ"               missing piece needed
+        │     not fixed → "ยังพบปัญหาอยู่..."
+        │
+        └── ambiguous
+            e.g. "ตอนนี้ล่ะ" / "แล้วไงต่อ"
+            - active context exists + confidence >= 0.7
+              → resolve to faq_followup or troubleshooting_recheck
+            - active context exists + confidence < 0.7
+              → ask one targeted clarification
+                "ต้องการให้เช็กเรื่องการถอนเงินต่อ หรือถามเรื่องอื่นครับ?"
+            - no active context
+              → escalate to missing_info
+        │
+        ▼
+5. Pipeline execution
+
+   FAQ:
+   - build query from topic + remark in active context
+   - retrieve docs (skip if cache valid and remark unchanged)
+   - rerank
+   - LLM answer with grounded context
+   - grounding < 0.25 AND retrieval < 0.4 → HR handoff
+
+   Troubleshooting:
+   - load active case + employee_id from active context
+   - fetch latest data from live API  ← always, Redis is context not business truth
+   - diagnose root cause
+   - blocking issue → deterministic template
+   - ok path → LLM synthesis from diagnostic context
+   - unclear → ask precise follow-up or HR handoff
+
+   Chitchat:
+   - YAML template lookup, return immediately
+
+   Missing info:
+   - identify exactly what is missing
+   - ask one targeted clarification question
+        │
+        ▼
+6. Final answer → user
+        │
+        ▼
+7. Update Redis  (non-blocking where possible)
+
+   save_turn()            → append user + bot messages to history
+   update_summary()       → background thread, refresh rolling recap
+   save_active_context()  → overwrite with latest topic / remark / root_cause
+   save_context_cache()   → save last FAQ docs or last diagnosis result
+   refresh session TTL    → reset 30 min idle timer
+```
+
+---
+
+### Redis Key Structure
+
+| Key | Purpose | TTL |
+|-----|---------|-----|
+| `chat:session:{tenant}:{user}` | Session continuity window | 30 min idle |
+| `chat:history:{tenant}:{user}:{lang}` | Last 3–5 raw turns | 7 days |
+| `chat:summary:{tenant}:{user}:{lang}` | Rolling 2–3 sentence recap | 7 days |
+| `chat:context:{tenant}:{user}` | Active topic / case / remark / status | 30 min (troubleshooting) · 1 day (FAQ) |
+| `chat:cache:{tenant}:{user}` | Last FAQ doc IDs or last diagnosis | 2 hours |
+
+---
+
+### Router Output Schema
+
+```json
+{
+  "intent": "faq",
+  "conv_state": "followup",
+  "followup_type": "faq_followup",
+  "confidence": 0.91,
+  "reason": "message refers to previous active topic and changes platform detail"
+}
+```
+
+**All valid combinations:**
+
+| intent | conv_state | followup_type |
+|--------|-----------|---------------|
+| `faq` | `new_query` | `null` |
+| `faq` | `followup` | `faq_followup` |
+| `troubleshooting` | `new_query` | `null` |
+| `troubleshooting` | `followup` | `troubleshooting_recheck` |
+| `chitchat` | `new_query` | `null` |
+| `missing_info` | `new_query` | `null` |
+| `missing_info` | `ambiguous` | `null` |
+
+---
+
+### Active Context Shape
+
+**FAQ**
+```json
+{
+  "intent": "faq",
+  "topic": "download_app",
+  "remark": "user clarified they use iOS",
+  "last_user_need": "iOS app download link",
+  "status": "active",
+  "updated_at": "2026-04-20T10:30:00+07:00"
+}
+```
+
+**Troubleshooting**
+```json
+{
+  "intent": "troubleshooting",
+  "topic": "withdrawal_issue",
+  "sub_type": "troubleshooting_withdrawal",
+  "employee_id": "12345",
+  "remark": "user asked to recheck after contacting HR",
+  "last_root_cause": "incomplete_attendance",
+  "status": "active",
+  "updated_at": "2026-04-20T10:35:00+07:00"
+}
+```
+`sub_type` = the agent API key to call on recheck — stored directly so no reverse-mapping needed.
+
+`status` values: `active` · `resolved` · `stale`
+
+---
+
+### Active Context Overwrite Rules
+
+**FAQ**
+
+| Field | Rule |
+|-------|------|
+| `topic` | Keep if same FAQ thread. Overwrite if new topic detected |
+| `remark` | Always overwrite with latest user detail |
+| `last_user_need` | Overwrite only if user clarified further |
+| `status` | Set `active` on new query. Set `resolved` when goodbye/thanks detected |
+
+**Troubleshooting**
+
+| Field | Rule |
+|-------|------|
+| `employee_id` | Never overwrite — set once, kept for session lifetime |
+| `topic` | Keep if same case. Overwrite if new issue raised |
+| `remark` | Always overwrite with latest user message context |
+| `last_root_cause` | Overwrite only after fresh API diagnosis completes |
+| `status` | `active` → `resolved` when API confirms fixed · `stale` if session expires |
+
+---
+
+### FAQ Cache Validity Rules
+
+**Reuse cache if ALL true:**
+- same topic as active context
+- same tenant / company scope
+- remark change does NOT affect: platform, product, company, policy target, date scope, issue subtype
+- cache age < 2 hours
+- doc IDs present in cache
+
+**Force rerun retrieval if ANY true:**
+- topic changed
+- company or tenant changed
+- remark changes: platform, product, date range, issue subtype
+- cache missing or expired
+
+**Troubleshooting — always call live API:**
+- never reuse diagnosis cache as business truth
+- cache only used to show previous result for delta comparison
+
+---
+
+### Example Flows
+
+#### Flow 1 — FAQ multi-turn
+
+```
+Turn 1
+  User:   ฉันสามารถดาวน์โหลดแอปได้ที่ไหน
+  Router: new_query · intent=faq · topic=download_app
+  Bot:    returns generic app download answer
+  Redis:  save active context { topic: download_app, remark: "user asked where to download" }
+
+Turn 2
+  User:   ผมใช้ iOS
+  Router: followup · faq_followup · confidence=0.88
+          remark changed → platform change → rerun retrieval
+  Bot:    returns iOS-specific download link
+  Redis:  update remark to "user clarified they use iOS"
+```
+
+#### Flow 2 — Troubleshooting recheck
+
+```
+Turn 1
+  User:   ทำไมถอนเงินไม่ได้
+  Router: new_query · intent=troubleshooting
+  Bot:    fetch API → incomplete_attendance → show attendance table
+  Redis:  save { topic: withdrawal_issue, last_root_cause: incomplete_attendance }
+
+Turn 2
+  User:   แจ้ง HR แล้ว ฝากเช็คให้อีกทีครับ
+  Router: followup · troubleshooting_recheck · confidence=0.93
+  Bot:    call API again → compare with previous root_cause
+          fixed     → "ตอนนี้ทุกอย่างปกติแล้วค่ะ"
+          not fixed → "ยังพบปัญหาในวันที่..."
+
+Turn 3
+  User:   ตอนนี้เป็นปกติหรือยัง
+  Router: ambiguous · confidence=0.71 → active context exists → troubleshooting_recheck
+  Bot:    call API again → answer with latest status
 ```

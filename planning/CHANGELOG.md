@@ -24,3 +24,4 @@ Add a new file here each time something is updated — never edit old entries.
 | [009](changes/009_troubleshooting_improvements.md) | 2026-04-02 | Troubleshooting Agent Improvements | fix + feature + data | 2 |
 | [010](changes/010_chitchat_and_missing_info_paths.md) | 2026-04-16 | Chitchat & Missing Info Paths + LLM Router | feature + refactor | 2 |
 | [011](changes/011_gemini_support_and_perf.md) | 2026-04-16 | Gemini 2.5 Flash support + pipeline performance improvements | feature + refactor | 2 |
+| [012](changes/012_multiturn_flow_and_memory_config.md) | 2026-04-20 | Multi-turn Flow & Memory Config | feature + refactor | 2 |

@@ -1,59 +1,351 @@
 """
 Main pipeline orchestrator.
 
-Coordinates the full request lifecycle:
-    session → load history → detect language → detect intent
-    → safety check → route → answer → save history
+Single entry point for all interfaces (Gradio, LINE webhook, future APIs).
+Coordinates: session → memory → route → pipeline → save.
+
+Usage:
+    from pipeline.orchestrator import handle_message
+
+    result = handle_message(
+        tenant_id="hns",
+        user_id="U1234",          # LINE user ID or employee ID
+        message="เบิกเงินไม่ได้",
+        employee_id="EMP003",     # for troubleshooting API calls
+    )
+    reply = result.answer
 """
 
-from dataclasses import dataclass, field
+import time
+import logging
+from dataclasses import dataclass
 from typing import Optional
 
-# TODO Phase 3: wire all imports
-# from memory.session import get_or_create_session
-# from memory.history import load_history, save_turn
-# from memory.summarizer import maybe_summarize
-# from llm.language import detect_language
-# from llm.intent import detect_intent
-# from pipeline.safety import check_safety
-# from pipeline.router import route
-# from pipeline.answer_generator import generate_answer
+from pipeline.router import decide_route, Route
+from rag.retriever import retrieve, build_context
+from pipeline.answer_generator import generate_answer, SYSTEM_PROMPT
+from utils.language import detect_language
+from utils.pipeline_logger import PipelineTrace
+from llm.intent import detect_intent
+
+from memory.history import load_history, save_turn, clear_history
+from memory.session import get_or_create_session, touch_session, end_session
+from memory.context_cache import (
+    save_faq_context, save_diagnostic_context,
+    load_faq_context, load_context, clear_context,
+)
+from memory.summarizer import load_summary, clear_summary, update_rolling_summary_async
+import memory.active_context as ac
+
+_logger = logging.getLogger("pipeline.orchestrator")
+
+_TS_TOPIC = {
+    "troubleshooting_withdrawal": "withdrawal_issue",
+    # Add new subtypes here when ready: "troubleshooting_payslip": "payslip_issue", etc.
+}
+
+TROUBLESHOOTING_SYSTEM_PROMPT = {
+    "th": (
+        "คุณคือผู้ช่วย AI ของ Salary Hero สำหรับแก้ปัญหาเฉพาะบุคคล\n"
+        "ตอบโดยอ้างอิงจากข้อมูลการวินิจฉัยที่ให้มาเท่านั้น\n"
+        "ระบุสาเหตุและแนวทางแก้ไขให้ชัดเจน กระชับ และเป็นมิตร\n"
+        "ห้ามขึ้นต้นด้วย 'จากข้อมูล' หรือ 'ตามข้อมูล'\n"
+        "ห้ามเพิ่มหัวข้อ 'คำถามที่เกี่ยวข้อง' ท้ายคำตอบ"
+    ),
+    "en": (
+        "You are Salary Hero's AI assistant for individual troubleshooting.\n"
+        "Answer strictly based on the diagnostic data provided.\n"
+        "Clearly state the root cause and resolution steps. Be concise and friendly.\n"
+        "Do NOT start with 'Based on the data' or similar preambles.\n"
+        "Do NOT add a 'Related questions' section."
+    ),
+}
 
 
 @dataclass
-class RequestContext:
-    """All data assembled before routing."""
-    tenant_id: str
-    user_id: str
-    message: str
-    session_id: str = ""
-    language: str = "th"
-    intent: str = "question"
-    history: list[dict] = field(default_factory=list)
-    history_summary: str = ""
-    is_safe: bool = True
-    safety_reason: str = ""
+class MessageResult:
+    answer: str
+    trace: Optional[str] = None
 
 
-@dataclass
-class ResponseContext:
-    """Final response with metadata."""
-    reply: str
-    route_taken: str = ""           # faq | troubleshooting | direct | template | handoff
-    grounding_score: float = 1.0
-    was_escalated: bool = False
-    handoff_context: Optional[dict] = None
+def _build_system_with_summary(base_system: str, summary: str) -> str:
+    if not summary:
+        return base_system
+    return (
+        f"{base_system}\n\n"
+        f"--- Previous session context ---\n{summary}\n"
+        f"--- End of previous context ---"
+    )
 
 
-async def handle_message(
+def handle_message(
     tenant_id: str,
     user_id: str,
     message: str,
-) -> str:
+    employee_id: str = "",
+    return_trace: bool = False,
+) -> MessageResult:
     """
-    Full pipeline entry point.
+    Full pipeline entry point. Called by all interfaces.
 
-    TODO Phase 3: implement fully.
-    Returns the reply string to send back to the user.
+    Args:
+        tenant_id:    Company namespace (e.g. "hns")
+        user_id:      LINE user ID (webhook) or employee ID (Gradio testing)
+        message:      Raw user message text
+        employee_id:  Employee ID for troubleshooting API calls.
+                      Falls back to user_id if not provided.
+        return_trace: Whether to include pipeline trace in result.
     """
-    raise NotImplementedError("Phase 3")
+    if not message.strip():
+        return MessageResult(answer="")
+
+    emp_id   = employee_id or user_id
+    language = detect_language(message)
+    trace    = PipelineTrace(tenant_id=tenant_id, query=message, language=language)
+
+    # ── Load memory ───────────────────────────────────────────────────────────
+    get_or_create_session(tenant_id, user_id)
+    redis_history  = load_history(tenant_id, user_id, language)
+    summary        = load_summary(tenant_id, user_id, language)
+    cached_ctx     = load_context(tenant_id, user_id)
+    active_ctx     = ac.load(tenant_id, user_id)
+    active_ctx_str = ac.load_for_router(tenant_id, user_id)
+
+    trace.set_memory(
+        history=redis_history,
+        summary=summary,
+        context_type=cached_ctx.get("type", "") if cached_ctx else "",
+        context_detail=(
+            cached_ctx.get("root_cause", "") if cached_ctx and cached_ctx.get("type") == "troubleshooting"
+            else cached_ctx.get("question", "")[:60] if cached_ctx else ""
+        ),
+    )
+
+    # ── Route ─────────────────────────────────────────────────────────────────
+    intent_result = detect_intent(message, language)
+    decision = decide_route(
+        intent_result.intent, message, language, tenant_id,
+        recent_history=redis_history,
+        active_context=active_ctx_str,
+        summary=summary,
+    )
+
+    # ── Path execution ─────────────────────────────────────────────────────────
+
+    # Active troubleshooting case check
+    _active_is_ts = (
+        active_ctx is not None
+        and active_ctx.get("intent") == "troubleshooting"
+        and active_ctx.get("status") == "active"
+    )
+    # Recheck if router says so, OR active TS case + follow-up/ambiguous message
+    _is_ts_recheck = (
+        decision.followup_type == "troubleshooting_recheck"
+        or (_active_is_ts and decision.conv_state in ("followup", "ambiguous"))
+    )
+
+    if _is_ts_recheck:
+        answer = _run_troubleshooting_recheck(
+            message, language, tenant_id, user_id, emp_id,
+            active_ctx, decision, redis_history, summary, trace,
+        )
+
+    elif decision.conv_state == "followup" and decision.followup_type == "faq_followup":
+        answer = _run_faq_followup(
+            message, language, tenant_id, user_id,
+            active_ctx, decision, redis_history, summary, trace,
+        )
+
+    elif decision.route == Route.CHITCHAT:
+        trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
+        answer = generate_answer(
+            message=message, context="", language=language,
+            tenant_id=tenant_id, intent=intent_result.intent.value,
+            history=redis_history, route=str(decision.route),
+            template_key=decision.template_key,
+        )
+
+    elif decision.route == Route.MISSING_INFO:
+        trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
+        answer = generate_answer(
+            message=message, context="", language=language,
+            tenant_id=tenant_id, intent=intent_result.intent.value,
+            history=redis_history, route=str(decision.route),
+            template_key=decision.template_key,
+        )
+
+    elif decision.route == Route.TROUBLESHOOTING:
+        answer = _run_troubleshooting_new(
+            message, language, tenant_id, user_id, emp_id,
+            decision, redis_history, summary, trace,
+        )
+
+    else:
+        answer = _run_faq(
+            message, language, tenant_id, user_id,
+            decision, redis_history, summary, trace,
+        )
+
+    # ── Persist ───────────────────────────────────────────────────────────────
+    save_turn(tenant_id, user_id, language, message, answer.text)
+    touch_session(tenant_id, user_id)
+
+    # Goodbye → clear session state (keep summary for next session)
+    if decision.route == Route.CHITCHAT and decision.template_key in ("goodbye", "thanks"):
+        clear_history(tenant_id, user_id, language)
+        clear_context(tenant_id, user_id)
+        ac.clear(tenant_id, user_id)
+        end_session(tenant_id, user_id)
+
+    # Rolling summary runs in background — zero latency impact
+    update_rolling_summary_async(tenant_id, user_id, language, message, answer.text)
+
+    # ── Trace ─────────────────────────────────────────────────────────────────
+    trace.set_answer(
+        text=answer.text,
+        grounding_score=answer.grounding_score,
+        was_escalated=answer.was_escalated,
+    )
+    trace.flush()
+
+    return MessageResult(answer=answer.text)
+
+
+# ── Pipeline sub-handlers ────────────────────────────────────────────────��────
+
+def _run_troubleshooting_recheck(
+    message, language, tenant_id, user_id, emp_id,
+    active_ctx, decision, redis_history, summary, trace,
+):
+    from agent.planner import run_troubleshooting_agent
+    recheck_emp_id  = (active_ctx or {}).get("employee_id") or emp_id
+    recheck_subtype = (active_ctx or {}).get("sub_type") or decision.template_key
+
+    trace.set_route(route="Route.TROUBLESHOOTING", reason=f"recheck: {decision.reason}")
+    agent_result = run_troubleshooting_agent(
+        employee_id=recheck_emp_id, issue=message, language=language,
+        tenant_id=tenant_id, sub_type=recheck_subtype,
+    )
+    trace.set_troubleshooting(
+        employee_id=recheck_emp_id,
+        root_cause=agent_result["root_cause"],
+        tools_used=agent_result["tools_used"],
+    )
+    diag = agent_result["diagnostic_context"]
+    save_diagnostic_context(tenant_id, user_id, employee_id=recheck_emp_id,
+                            diagnostic_context=diag, root_cause=agent_result["root_cause"])
+    ac.save_troubleshooting_context(
+        tenant_id, user_id,
+        topic=_TS_TOPIC.get(recheck_subtype, recheck_subtype),
+        sub_type=recheck_subtype,
+        remark=message,
+        employee_id=recheck_emp_id, last_root_cause=agent_result["root_cause"],
+    )
+    system = _build_system_with_summary(
+        TROUBLESHOOTING_SYSTEM_PROMPT.get(language, TROUBLESHOOTING_SYSTEM_PROMPT["th"]), summary)
+    return generate_answer(
+        message=message, context=diag, language=language, tenant_id=tenant_id,
+        intent="question", history=redis_history, route="Route.TROUBLESHOOTING",
+        system_prompt_override=system, prefilled_answer=agent_result.get("template_answer", ""),
+    )
+
+
+def _run_troubleshooting_new(
+    message, language, tenant_id, user_id, emp_id,
+    decision, redis_history, summary, trace,
+):
+    from agent.planner import run_troubleshooting_agent
+    trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
+    agent_result = run_troubleshooting_agent(
+        employee_id=emp_id, issue=message, language=language,
+        tenant_id=tenant_id, sub_type=decision.template_key,
+    )
+    trace.set_troubleshooting(
+        employee_id=emp_id,
+        root_cause=agent_result["root_cause"],
+        tools_used=agent_result["tools_used"],
+    )
+    diag = agent_result["diagnostic_context"]
+    save_diagnostic_context(tenant_id, user_id, employee_id=emp_id,
+                            diagnostic_context=diag, root_cause=agent_result["root_cause"])
+    ac.save_troubleshooting_context(
+        tenant_id, user_id,
+        topic=_TS_TOPIC.get(decision.template_key, decision.template_key),
+        sub_type=decision.template_key,
+        remark=message, employee_id=emp_id, last_root_cause=agent_result["root_cause"],
+    )
+    system = _build_system_with_summary(
+        TROUBLESHOOTING_SYSTEM_PROMPT.get(language, TROUBLESHOOTING_SYSTEM_PROMPT["th"]), summary)
+    return generate_answer(
+        message=message, context=diag, language=language, tenant_id=tenant_id,
+        intent="question", history=redis_history, route=str(decision.route),
+        system_prompt_override=system, prefilled_answer=agent_result.get("template_answer", ""),
+    )
+
+
+def _run_faq_followup(
+    message, language, tenant_id, user_id,
+    active_ctx, decision, redis_history, summary, trace,
+):
+    topic = (active_ctx or {}).get("topic", "")
+    retrieval_query = f"{topic} {message}".strip() if topic else message
+    trace.set_route(route=str(Route.FAQ), reason=f"faq_followup: {decision.reason}")
+    _t0 = time.perf_counter()
+    result = retrieve(retrieval_query, tenant_id, language, top_k=3)
+    trace.mark_step("retrieval", (time.perf_counter() - _t0) * 1000)
+    trace.set_retrieval(
+        query_used=f"[followup] {result.query_used}",
+        collection=result.collection, documents=result.documents,
+    )
+    context   = build_context(result.documents, language)
+    top_score = result.documents[0].score if result.documents else 0.0
+    system = _build_system_with_summary(SYSTEM_PROMPT.get(language, SYSTEM_PROMPT["th"]), summary)
+    answer = generate_answer(
+        message=message, context=context, language=language, tenant_id=tenant_id,
+        intent="question", history=redis_history, route=str(Route.FAQ),
+        top_retrieval_score=top_score, system_prompt_override=system,
+    )
+    save_faq_context(tenant_id, user_id, question=message,
+                     retrieved_docs=[d.answer for d in result.documents], answer=answer.text)
+    ac.update_remark(tenant_id, user_id, message)
+    return answer
+
+
+def _run_faq(
+    message, language, tenant_id, user_id,
+    decision, redis_history, summary, trace,
+):
+    cached_faq = load_faq_context(tenant_id, user_id)
+    retrieval_query = message
+    if len(message.strip()) < 25 and redis_history:
+        last_user_msgs = [m["content"] for m in redis_history if m["role"] == "user"]
+        if last_user_msgs:
+            retrieval_query = f"{last_user_msgs[-1]} {message}"
+
+    trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
+    _t0 = time.perf_counter()
+    result = retrieve(retrieval_query, tenant_id, language, top_k=3)
+    trace.mark_step("retrieval", (time.perf_counter() - _t0) * 1000)
+    trace.set_retrieval(
+        query_used=result.query_used if retrieval_query == message else f"[enriched] {result.query_used}",
+        collection=result.collection, documents=result.documents,
+    )
+    context   = build_context(result.documents, language)
+    top_score = result.documents[0].score if result.documents else 0.0
+
+    if cached_faq and top_score < 0.4:
+        prev = (f"[Previous answer on related topic]\n"
+                f"Q: {cached_faq['question']}\nA: {cached_faq['answer']}\n\n")
+        context = prev + context if context else prev
+
+    system = _build_system_with_summary(SYSTEM_PROMPT.get(language, SYSTEM_PROMPT["th"]), summary)
+    answer = generate_answer(
+        message=message, context=context, language=language, tenant_id=tenant_id,
+        intent="question", history=redis_history, route=str(decision.route),
+        top_retrieval_score=top_score, system_prompt_override=system,
+    )
+    save_faq_context(tenant_id, user_id, question=message,
+                     retrieved_docs=[d.answer for d in result.documents], answer=answer.text)
+    ac.save_faq_context(tenant_id, user_id, topic=message[:60],
+                        remark=message, last_user_need=message)
+    return answer

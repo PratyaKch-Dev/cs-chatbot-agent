@@ -1,0 +1,26 @@
+# Memory configuration — TTLs, limits, and Redis key prefixes
+# Edit this file only; all memory modules read from here.
+
+session:
+  ttl_seconds: 1800          # 30 min idle — resets on every message
+
+history:
+  ttl_seconds: 604800        # 7 days
+  max_exchanges: 3           # number of user+bot turn pairs kept
+
+summary:
+  ttl_seconds: 604800        # 7 days
+
+context:
+  faq_ttl_seconds: 86400           # 1 day   — FAQ topics are generic, longer lived
+  troubleshooting_ttl_seconds: 1800  # 30 min — active case follows session window
+
+cache:
+  ttl_seconds: 7200          # 2 hours — last FAQ docs or last diagnosis result
+
+keys:
+  session:  "chat:session"
+  history:  "chat:memory"
+  summary:  "chat:summary"
+  context:  "chat:context"
+  cache:    "chat:cache"

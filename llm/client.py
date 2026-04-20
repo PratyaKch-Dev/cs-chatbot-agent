@@ -84,12 +84,20 @@ def call_llm(
         # Push to active pipeline trace (no-op when no trace is active)
         try:
             from utils.pipeline_logger import record_llm_call
+            # history = all messages except the last one (prior exchanges)
+            # prompt  = last message content (context + question for answer step)
+            history_msgs = messages[:-1] if len(messages) > 1 else []
+            last_user    = messages[-1]["content"] if messages else ""
             record_llm_call(
                 step=step,
                 model=response.model or get_provider().get_model_name(),
                 in_tokens=response.input_tokens,
                 out_tokens=response.output_tokens,
                 latency_ms=latency_ms,
+                system=system,
+                history_msgs=history_msgs,
+                prompt=last_user,
+                reply=response.text,
             )
         except Exception:
             pass  # never let tracing break the call

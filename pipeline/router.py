@@ -16,10 +16,11 @@ Labels:
 Fallback (LLM unavailable): use detect_intent result → same label map.
 """
 
+import json
 import logging
 import re
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 _logger = logging.getLogger("pipeline.router")
@@ -41,6 +42,8 @@ class RouteDecision:
     confidence: float = 1.0
     template_key: str = ""
     existing_context: Optional[str] = None
+    conv_state: str = "new_query"           # new_query | followup | ambiguous
+    followup_type: Optional[str] = None     # faq_followup | troubleshooting_recheck | None
 
 
 # ── Label → Route map (single source of truth) ────────────────────────────────
@@ -52,9 +55,7 @@ _LABEL_TO_ROUTE: dict[str, Route] = {
     "confused":                    Route.CHITCHAT,
     "missing_info":                Route.MISSING_INFO,
     "troubleshooting_withdrawal":  Route.TROUBLESHOOTING,
-    "troubleshooting_attendance":  Route.TROUBLESHOOTING,
-    "troubleshooting_account":     Route.TROUBLESHOOTING,
-    "troubleshooting_deduction":   Route.TROUBLESHOOTING,
+    # Add new subtypes here when ready
     "faq":                         Route.FAQ,
 }
 
@@ -78,73 +79,134 @@ TEMPLATE_INTENTS    = CHITCHAT_INTENTS | MISSING_INFO_INTENTS
 # ── LLM classifier ────────────────────────────────────────────────────────────
 
 _ROUTER_SYSTEM = """\
-You are a message classifier for Salary Hero's customer support chatbot.
+Salary Hero chatbot router. Return JSON only.
 
-Classify the user's message into EXACTLY ONE of these labels:
+intents: greeting|thanks|goodbye|frustrated|confused|missing_info|faq|troubleshooting_withdrawal
 
-greeting                  — hello, สวัสดี, hi, or any opening message
-thanks                    — ขอบคุณ, thank you, ok, got it, ดีๆ, โอเค, รับทราบ
-goodbye                   — ลาก่อน, bye, see you
-frustrated                — ห่วย, แย่มาก, angry, terrible
-confused                  — งง, ไม่เข้าใจ, don't understand
-missing_info              — too vague to understand (ช่วยด้วย, มีปัญหา, single "?")
-troubleshooting_withdrawal — can't withdraw, balance = 0, เบิกไม่ได้, ยอด 0, ซิงค์
-troubleshooting_attendance — user's OWN record is wrong/missing: เช็คอินแล้วแต่ไม่ขึ้น, ประวัติเข้างานหาย, ระบบไม่บันทึก
-troubleshooting_account   — suspended, blacklisted, สถานะบัญชี, ระงับ
-troubleshooting_deduction — salary deducted, หักเงิน, ค่าปรับ, OT
-faq                       — general policy/procedure question about Salary Hero features, rules, or what-to-do steps
+conv_state: new_query=new topic, followup=continues active context, ambiguous=unclear short msg
+followup_type: faq_followup|troubleshooting_recheck|null (null unless conv_state=followup)
+troubleshooting_recheck when: แจ้ง HR แล้ว / ช่วยเช็คอีกที / ตอนนี้ปกติหรือยัง / ยังไม่ได้
+troubleshooting_attendance ONLY when user's OWN record is wrong (not policy questions)
+greeting+question → classify by question. Unsure ts subtype → troubleshooting_withdrawal
 
-Rules:
-- Reply with ONLY the label. No spaces. No punctuation. No explanation.
-- When greeting + question together → classify by the QUESTION, not the greeting.
-- When unsure between troubleshooting sub-types → use troubleshooting_withdrawal.
-- "ลืม check in ต้องทำอะไร" / "ขาดงานโดนหักไหม" / "มาสายกี่นาทีถึงโดนหัก" → faq  (policy question, not personal record issue)
-- troubleshooting_attendance is ONLY when the user says their record IS wrong, not asking what to do about forgetting."""
+{"intent":"<label>","conv_state":"new_query|followup|ambiguous","followup_type":"faq_followup|troubleshooting_recheck|null","confidence":0.0,"reason":"<short>"}"""
 
 
 def _parse_label(raw: str) -> Optional[str]:
-    """
-    Robustly extract a valid label from the raw LLM output.
-    Tries exact match first, then scans for any known label substring.
-    """
-    cleaned = raw.strip().lower()
-    # Remove everything except word chars and underscores
-    cleaned = re.sub(r"[^\w]", "", cleaned)
-
-    # Exact match
+    """Extract a valid label from raw LLM output (used by fallback path)."""
+    cleaned = re.sub(r"[^\w]", "", raw.strip().lower())
     if cleaned in _LABEL_TO_ROUTE:
         return cleaned
-
-    # Substring scan — longest match wins (e.g. "troubleshooting_withdrawal" > "faq")
     for label in sorted(_LABEL_TO_ROUTE, key=len, reverse=True):
         if label in cleaned:
             return label
-
     return None
 
 
-def _llm_classify(message: str, language: str) -> Optional[RouteDecision]:
+def _parse_router_json(raw: str) -> Optional[dict]:
     """
-    Call haiku to classify the message.
-    Returns None on failure so the caller can use the intent-based fallback.
+    Extract JSON from LLM output.
+    Falls back to per-field regex extraction when JSON is truncated.
+    """
+    text = re.sub(r"```(?:json)?", "", raw).strip().rstrip("`").strip()
+
+    # Full parse
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+
+    # Complete {...} block
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if m:
+        try:
+            return json.loads(m.group())
+        except Exception:
+            pass
+
+    # Per-field regex — handles truncated JSON
+    result: dict = {}
+    for key in ("intent", "conv_state", "followup_type", "reason"):
+        m = re.search(rf'"{key}"\s*:\s*"([^"]*)"', text)
+        if m:
+            result[key] = m.group(1)
+    m = re.search(r'"confidence"\s*:\s*([\d.]+)', text)
+    if m:
+        result["confidence"] = float(m.group(1))
+    if "followup_type" not in result and re.search(r'"followup_type"\s*:\s*null', text):
+        result["followup_type"] = None
+
+    return result if "intent" in result else None
+
+
+def _llm_classify(
+    message: str,
+    language: str,
+    recent_history: list[dict] | None = None,
+    active_context: str = "",
+    summary: str = "",
+) -> Optional[RouteDecision]:
+    """
+    Call fast LLM to classify message + conv_state.
+    Returns None on failure so the caller uses the intent-based fallback.
     """
     try:
         from llm.client import call_llm
+
+        parts: list[str] = []
+
+        if summary:
+            parts.append(f"Summary:\n{summary[:200]}")
+
+        if recent_history:
+            recent = recent_history[-2:]  # last 1 exchange only — keeps input small
+            lines = []
+            for m in recent:
+                role = "User" if m["role"] == "user" else "Bot"
+                lines.append(f"{role}: {m['content'][:100]}")
+            parts.append("Recent history:\n" + "\n".join(lines))
+
+        if active_context:
+            parts.append(f"Active context:\n{active_context}")
+
+        parts.append(f"New message: {message}")
+        content = "\n\n".join(parts)
+
         raw = call_llm(
-            messages=[{"role": "user", "content": message}],
+            messages=[{"role": "user", "content": content}],
             system=_ROUTER_SYSTEM,
-            max_tokens=10,
+            max_tokens=250,
             language=language,
             step="router",
         )
-        label = _parse_label(raw)
-        if label is None:
-            _logger.warning(f"[router] LLM unknown label raw={raw!r}, using fallback")
+
+        parsed = _parse_router_json(raw)
+        if not parsed:
+            _logger.warning(f"[router] JSON parse failed raw={raw!r}, using fallback")
             return None
 
+        intent = parsed.get("intent", "").strip()
+        label = _parse_label(intent) or _parse_label(raw)
+        if label is None:
+            _logger.warning(f"[router] unknown intent={intent!r}, using fallback")
+            return None
+
+        conv_state   = parsed.get("conv_state", "new_query")
+        followup_type = parsed.get("followup_type") or None
+        confidence   = float(parsed.get("confidence", 0.9))
+        reason       = parsed.get("reason", "llm")
+
         route = _LABEL_TO_ROUTE[label]
-        _logger.info(f"[router] LLM → {label}")
-        return RouteDecision(route=route, reason="llm", confidence=0.95, template_key=label)
+        _logger.info(f"[router] LLM → intent={label} conv_state={conv_state} followup_type={followup_type} conf={confidence:.2f}")
+
+        return RouteDecision(
+            route=route,
+            reason=reason,
+            confidence=confidence,
+            template_key=label,
+            conv_state=conv_state,
+            followup_type=followup_type if conv_state == "followup" else None,
+        )
 
     except Exception as exc:
         _logger.warning(f"[router] LLM failed ({exc}), using fallback")
@@ -156,18 +218,10 @@ _TS_KEYWORDS = {
         "เบิกไม่ได้", "เบิกเงินไม่ได้", "ยอด 0", "ยอด0", "0 บาท", "0บาท",
         "แสดง 0", "แสดงผล 0", "ไม่มียอด", "ยอดไม่ขึ้น", "เงินไม่ขึ้น",
         "เบิกไม่ผ่าน", "ทำไมเบิกไม่ได้", "ยอดเบิก", "เป็น 0", "เป็น0",
-        "หักเงิน", "เงินเดือน", "ขาดงาน", "ซิงค์", "ลงทะเบียน",
-        "สถานะ", "บัญชีถูก", "ระงับ",
-        "การเข้างาน", "เข้างาน", "เช็คอิน", "เช็คเอาท์",
-        "ประวัติการเข้างาน", "ประวัติเข้างาน", "บันทึกเวลา", "ลืม punch",
-        "สายกี่วัน", "ขาดกี่วัน", "มาสาย",
     ],
     "en": [
         "can't withdraw", "cannot withdraw", "zero balance", "balance 0",
         "withdrawal failed", "not eligible",
-        "attendance", "check in", "check out", "punch in", "punch out",
-        "attendance record", "attendance history", "missed punch",
-        "deduction", "payroll", "sync", "not working",
     ],
 }
 
@@ -218,12 +272,20 @@ def decide_route(
     message: str,
     language: str,
     tenant_id: str,
+    recent_history: list[dict] | None = None,
+    active_context: str = "",
+    summary: str = "",
 ) -> RouteDecision:
     """
-    LLM classifies the message into a specific label → route + template_key.
+    LLM classifies the message → route + conv_state + followup_type.
     Falls back to intent-based routing if LLM is unavailable.
     """
-    decision = _llm_classify(message, language)
+    decision = _llm_classify(
+        message, language,
+        recent_history=recent_history,
+        active_context=active_context,
+        summary=summary,
+    )
     if decision:
         return decision
     return _intent_fallback(intent, message, language)
