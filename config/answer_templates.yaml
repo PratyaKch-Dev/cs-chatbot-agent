@@ -4,138 +4,146 @@
 # Variables in {braces} are filled in from diagnostic data at runtime.
 #
 # Available variables:
-#   {name}        — employee name
-#   {employee_id} — employee ID
-#   {status}      — account status (active / inactive / suspended)
-#   {last_sync}   — last sync timestamp
-#   {next_sync}   — next sync timestamp
-#   {remarks}     — system remarks found in attendance records
-#   {deductions}  — formatted deduction list
+#   {name}             — employee name
+#   {employee_id}      — employee ID
+#   {status}           — account status (active / inactive / suspended)
+#   {last_sync}        — last sync timestamp
+#   {next_sync}        — next sync timestamp
+#   {remarks}          — system remarks found in attendance records
+#   {deductions}       — formatted deduction list
+#   {attendance_table} — formatted attendance table
 
 # ── 1. Normal active user — all systems good ─────────────────────────────────
 normal_active:
   th:
     template: |
-      ตรวจสอบข้อมูลของ {name} แล้ว ทุกอย่างปกติค่ะ ไม่พบปัญหาที่ขัดขวางการเบิกเงิน
+      ตรวจสอบข้อมูลของ {name} แล้ว ทุกอย่างปกติค่ะ สามารถเบิกเงินได้ตามปกติ
 
-      หากยังเบิกไม่ได้ ลองทำตามนี้:
-      - ปิดแอปแล้วเปิดใหม่เพื่อรีเฟรชยอดเงิน
-      - ตรวจสอบว่ามีสัญญาณอินเทอร์เน็ต
-      - หากยังมีปัญหา ติดต่อแอดมิน Salary Hero ได้เลยค่ะ
+      ถ้ายังเบิกไม่ได้ ลองทำตามนี้นะคะ:
+      1. ปิดแอปแล้วเปิดใหม่
+      2. ตรวจสอบอินเทอร์เน็ต
+      3. หากยังไม่ได้แจ้งได้เลยค่ะ
   en:
     template: |
-      Everything looks normal for {name} — no issues blocking withdrawals.
+      Everything for {name} looks good. You should be able to withdraw as normal.
 
-      If you're still unable to withdraw:
-      - Close and reopen the app to refresh the balance.
-      - Check your internet connection.
-      - If the issue persists, contact your Salary Hero admin.
+      If you still can't withdraw, try these steps:
+      1. Close and reopen the app
+      2. Check your internet connection
+      3. Still not working? Contact your Salary Hero admin
 
-# ── 2. Account status — active / inactive / blacklisted / suspended ──────────
+# ── 2. Account status inactive ───────────────────────────────────────────────
 status_inactive:
   th:
     template: |
-      บัญชีของ {name} มีสถานะ "{status}" อยู่ในขณะนี้ จึงไม่สามารถเบิกเงินได้ค่ะ
+      บัญชีของ {name} มีสถานะ "{status}" จึงยังไม่สามารถเบิกเงินได้ค่ะ
 
-      กรุณาติดต่อฝ่าย HR เพื่อตรวจสอบและอัปเดตสถานะบัญชีให้เป็น active
-      เมื่อ HR อัปเดตสถานะแล้ว รอระบบซิงค์ข้อมูล (ปกติภายในคืนนั้น) ก็จะเบิกเงินได้ค่ะ
+      วิธีแก้ไข:
+      - ติดต่อ HR เพื่อขอเปลี่ยนสถานะเป็น active
+      ถ้า HR อัปเดตเรียบร้อยแล้ว ลองทำตามนี้นะคะ:
+        1. ปิดแอปแล้วเปิดใหม่
+        2. ลองเช็คดูว่าสถานะอัปเดตหรือยัง
   en:
     template: |
-      {name}'s account status is currently "{status}", which is blocking withdrawals.
+      {name}'s account is currently "{status}". This is why withdrawals are blocked.
 
-      Please contact HR to update the account status to active.
-      After HR makes the change, wait for the nightly sync and withdrawals will be available.
+      What to do:
+      - Contact HR and ask them to set your account to active
+      - After HR updates, wait for the nightly sync. You'll then be able to withdraw
 
-blacklisted:
-  th:
-    template: |
-      บัญชีของ {name} ถูกระงับการใช้งานชั่วคราว (blacklist) จึงไม่สามารถเบิกเงินได้ในขณะนี้ค่ะ
-
-      กรุณาติดต่อฝ่าย HR โดยตรงเพื่อตรวจสอบสาเหตุและขอให้ปลด blacklist
-      เมื่อ HR ปลดแล้ว จะสามารถเบิกเงินได้ทันทีในรอบถัดไปค่ะ
-  en:
-    template: |
-      {name}'s account has been temporarily blacklisted, so withdrawals are blocked.
-
-      Please contact HR directly to find out the reason and request removal from the blacklist.
-      Once HR removes the flag, withdrawals will be available again immediately.
-
+# ── 3. Account suspended by HR ───────────────────────────────────────────────
 suspended:
   th:
     template: |
-      สถานะบัญชีของ {name} ถูกระงับโดย HR จึงไม่สามารถเบิกเงินได้ค่ะ
+      บัญชีของ {name} มีสถานะ "{status}" จึงยังไม่สามารถเบิกเงินได้ค่ะ
 
-      กรุณาติดต่อฝ่าย HR เพื่อตรวจสอบสาเหตุและขอให้เปิดการใช้งานบัญชีอีกครั้ง
-      หากต้องการความช่วยเหลือเพิ่มเติม สามารถติดต่อแอดมิน Salary Hero ได้โดยตรงค่ะ
+      วิธีแก้ไข:
+      - ติดต่อ HR เพื่อขอเปลี่ยนสถานะเป็น active
+      ถ้า HR อัปเดตเรียบร้อยแล้ว ลองทำตามนี้นะคะ:
+        1. ปิดแอปแล้วเปิดใหม่
+        2. ลองเช็คดูว่าสถานะอัปเดตหรือยัง
   en:
     template: |
-      {name}'s account has been suspended by HR, so withdrawals are currently blocked.
+      {name}'s account is currently "{status}". This is why withdrawals are blocked.
 
-      Contact HR to find out the reason and request account reactivation.
-      For additional help, you can also reach out to your Salary Hero admin directly.
+      What to do:
+      - Contact HR and ask them to set your account to active
+      - After HR updates, wait for the nightly sync. You'll then be able to withdraw
 
-# ── 3. Attendance — null check-in/out or system remarks ──────────────────────
+# ── 4. Blacklisted ───────────────────────────────────────────────────────────
+blacklisted:
+  th:
+    template: |
+      บัญชีของ {name} ถูกระงับ (blacklist) ชั่วคราว จึงเบิกเงินไม่ได้ค่ะ
+
+      วิธีแก้ไข:
+      - ติดต่อ HR เพื่อสอบถามสาเหตุและขอปลด blacklist
+      - เมื่อ HR ปลดแล้ว จะเบิกเงินได้ทันทีค่ะ
+  en:
+    template: |
+      {name}'s account is temporarily blacklisted, so you can't withdraw right now.
+
+      What to do:
+      - Contact HR to ask why and request removal from the blacklist
+      - Once HR removes the blacklist, you can withdraw again in the next cycle
+
+# ── 5. Attendance — null check-in/out or system remarks ──────────────────────
 attendance_remark:
   th:
     template: |
-      พบรายการเข้า-ออกงานที่ไม่สมบูรณ์ของ {name} ซึ่งอาจเป็นสาเหตุให้ยอดเงินไม่ถูกต้องค่ะ
+      พบข้อมูลเข้า-ออกงานของ {name} ไม่สมบูรณ์ อาจทำให้ยอดเงินไม่ถูกต้องค่ะ
 
       {attendance_table}
-
-      ระบบคำนวณยอดเงินจากข้อมูล check-in / check-out หากมีรายการที่ขาดหายหรือมีหมายเหตุค้างอยู่ ยอดที่แสดงอาจไม่ถูกต้อง
 
       วิธีแก้ไข:
-      - แจ้ง HR ให้ตรวจสอบและแก้ไขรายการที่มี — หรือ ⚠️
-      - เมื่อ HR บันทึกข้อมูลแล้ว รอระบบซิงค์คืนนั้น ยอดเงินจะอัปเดตค่ะ
+      - แจ้ง HR ให้ตรวจสอบและแก้ไขรายการที่ขาดหรือมีหมายเหตุ
+      - หลัง HR แก้ไข รอระบบซิงค์คืนนี้ ยอดเงินจะอัปเดตค่ะ
   en:
     template: |
-      Incomplete check-in / check-out records were found for {name} that may be causing the withdrawal issue.
+      {name} has incomplete check-in/out records, which may cause the balance to be wrong.
 
       {attendance_table}
 
-      The system calculates the balance from check-in/check-out data. Missing punches or unresolved remarks can affect the displayed amount.
+      What to do:
+      - Ask HR to check and fix any missing or flagged entries
+      - After HR updates, wait for tonight's sync. The balance will update
 
-      How to fix:
-      - Ask HR to review and correct entries marked — or ⚠️.
-      - After HR updates the records, wait for the nightly sync — the balance will refresh.
-
-# ── 4. Deductions — has deductions / no deductions ───────────────────────────
+# ── 6. Deductions ────────────────────────────────────────────────────────────
 has_deductions:
   th:
     template: |
-      ยอดเงินที่เบิกได้ของ {name} ถูกหักเนื่องจากรายการต่อไปนี้ค่ะ:
+      ยอดเงินของ {name} ถูกหักจากรายการต่อไปนี้ค่ะ:
 
       {deductions}
 
-      ยอดเงินที่แสดงในแอปได้คำนวณหักรายการเหล่านี้แล้ว
-      หากคิดว่ามีรายการที่ไม่ถูกต้อง กรุณาติดต่อ HR เพื่อตรวจสอบค่ะ
+      ยอดเงินในแอปหักรายการเหล่านี้แล้ว
+      ถ้าคิดว่ามีรายการผิด ติดต่อ HR ให้ช่วยตรวจสอบได้เลยค่ะ
   en:
     template: |
-      {name}'s available balance has been reduced due to the following deductions:
+      {name}'s balance was reduced by these items:
 
       {deductions}
 
-      The amount shown in the app already reflects these deductions.
-      If you believe any item is incorrect, please contact HR to review.
+      The app already subtracts these amounts.
+      If you think something is wrong, please ask HR to check
 
-# ── 5. Sync — last sync time ──────────────────────────────────────────────────
+# ── 7. Sync pending ───────────────────────────────────────────────────────────
 sync_pending:
   th:
     template: |
-      ยอดเงินของ {name} ยังไม่อัปเดตเพราะข้อมูลเงินเดือนอยู่ระหว่างการซิงค์ค่ะ
+      ยอดเงินของ {name} ยังไม่อัปเดต เพราะระบบกำลังซิงค์ข้อมูลเงินเดือนค่ะ
 
       - ซิงค์ล่าสุด: {last_sync}
       - ซิงค์ถัดไป: {next_sync}
 
-      รอระบบซิงค์ข้อมูลอัตโนมัติ หลังจากนั้นยอดเงินจะขึ้นและเบิกได้ทันที
-      หากรอไม่ได้ แจ้ง HR หรือแอดมินเพื่อทำ sync ด่วนได้เลยค่ะ
+      รอให้ระบบซิงค์เสร็จ ยอดเงินจะอัปเดตและเบิกได้ทันที
+      ถ้าต้องการด่วน แจ้ง HR หรือแอดมินให้ช่วยซิงค์ได้เลยค่ะ
   en:
     template: |
-      {name}'s balance hasn't updated yet — payroll sync is still pending.
+      {name}'s balance hasn't updated yet because payroll sync is in progress.
 
       - Last sync: {last_sync}
       - Next sync: {next_sync}
 
-      The system syncs automatically. Once complete, the balance will update and withdrawals will be available.
-      If urgent, ask HR or your admin to trigger a manual sync.
-
+      Wait for the sync to finish — your balance will update and you can withdraw.
+      If it's urgent, ask HR or your admin to run a manual sync

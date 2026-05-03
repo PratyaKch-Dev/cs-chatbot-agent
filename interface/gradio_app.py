@@ -25,7 +25,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
-TENANT_ID   = "hns"
+TENANT_ID   = "happy_nest_space"
 EMPLOYEE_ID = "EMP001"   # default for troubleshooting tests
 
 
@@ -44,7 +44,11 @@ def _chat(
         message=message,
         employee_id=employee_id,
     )
-    return result.answer, _read_last_trace()
+    answer = result.answer
+    if result.image_urls and not result.was_escalated:
+        imgs = "\n".join(f"![]({url})" for url in result.image_urls)
+        answer = f"{answer}\n\n{imgs}"
+    return answer, _read_last_trace()
 
 
 _LOG_FILE = Path(__file__).parent.parent / "logs" / "faq_trace.log"
@@ -78,7 +82,7 @@ def build_demo() -> gr.Blocks:
             tenant_input = gr.Textbox(value=TENANT_ID,   label="Tenant ID",   scale=1)
             emp_input    = gr.Textbox(value=EMPLOYEE_ID, label="Employee ID (for troubleshooting)", scale=1)
 
-        chatbot   = gr.Chatbot(label="Conversation", height=500)
+        chatbot   = gr.Chatbot(label="Conversation", height=500, render_markdown=True)
         msg_input = gr.Textbox(
             placeholder="พิมพ์ข้อความ / Type a message...",
             label="Message",

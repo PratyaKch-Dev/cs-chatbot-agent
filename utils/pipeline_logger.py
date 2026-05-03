@@ -152,18 +152,11 @@ class PipelineTrace:
     def flush(self) -> None:
         set_active_trace(None)
         self.duration_ms = round((time.time() - self._start) * 1000, 1)
-        _log_terminal(self)   # terminal log stays sync (fast, no I/O)
-        threading.Thread(target=_write_files, args=(self,), daemon=True).start()
-
-
-def _write_files(t: PipelineTrace) -> None:
-    """Background thread: write log files without blocking the response."""
-    try:
         LOG_DIR.mkdir(exist_ok=True)
-        _write_readable(t)
-        _write_jsonl(t)
-    except Exception as e:
-        _logger.warning(f"[trace] write failed: {e}")
+        _write_readable(self)  # sync — Gradio reads this immediately after flush()
+        _log_terminal(self)
+        threading.Thread(target=_write_jsonl, args=(self,), daemon=True).start()
+
 
 
 def _write_readable(t: PipelineTrace) -> None:
@@ -189,23 +182,33 @@ def _write_readable(t: PipelineTrace) -> None:
 
     lines.append(f"  MEMORY  history={len(hist)//2} turns  context={ctx_str}")
     for msg in hist:
-        role    = "U" if msg["role"] == "user" else "B"
-        preview = msg["content"][:80].replace("\n", " ")
-        suffix  = "..." if len(msg["content"]) > 80 else ""
-        lines.append(f"          [{role}] {preview}{suffix}")
+        role = "U" if msg["role"] == "user" else "B"
+        lines.append(f"          [{role}] {msg['content'].replace(chr(10), ' ')}")
     if smry:
-        smry_line = smry.replace("\n", " ")[:100]
-        lines.append(f"          [summary] {smry_line}{'...' if len(smry) > 100 else ''}")
+        lines.append(f"          [summary] {smry.replace(chr(10), ' ')}")
     else:
         lines.append("          [summary] none")
     lines.append("")
 
-    # ── ROUTE ─────────────────────────────────────────────────────────────────
+    # ── ROUTER LLM ────────────────────────────────────────────────────────────
     r_tok = f"  in={router_call['in']} out={router_call['out']}" if router_call else ""
     r_ms  = f"  {router_call['ms']:.0f}ms" if router_call else ""
-    r_raw = (router_call.get("reply") or "").replace("\n", " ")[:100] if router_call else "(fallback)"
     lines.append(f"  ROUTE   {route_label}{r_ms}{r_tok}")
-    lines.append(f"          {r_raw}")
+    if router_call:
+        # system prompt
+        sys_text = (router_call.get("system") or "").strip()
+        for line in sys_text.splitlines():
+            lines.append(f"  [SYS]   {line}")
+        lines.append("")
+        # → sent (the combined user content: summary + history + active_ctx + message)
+        sent = (router_call.get("prompt") or "").strip()
+        for line in sent.splitlines():
+            lines.append(f"  →       {line}")
+        # ← back
+        reply = (router_call.get("reply") or "").replace("\n", " ")
+        lines.append(f"  ←       {reply}")
+    else:
+        lines.append("          (fallback — no LLM)")
     if t.route_reason:
         lines.append(f"          reason: {t.route_reason}")
     lines.append("")
@@ -219,22 +222,50 @@ def _write_readable(t: PipelineTrace) -> None:
     else:
         ret_ms = f"  {step_ms['retrieval']:.0f}ms" if "retrieval" in step_ms else ""
         lines.append(f"  RAG{ret_ms}   collection={t.collection}")
-        if t.query_cleaned and t.query_cleaned != t.query:
-            lines.append(f"          query: {t.query_cleaned}")
+        lines.append(f"  →       {t.query_cleaned or t.query}")
         for h in t.hits:
             lines.append(f"          #{h.rank} {h.score:.2f}  {h.question[:65]}")
         if not t.hits:
             lines.append("          (no results)")
     lines.append("")
 
-    # ── ANSWER ────────────────────────────────────────────────────────────────
+    # ── ANSWER LLM ───────────────────────────────────────────────────────────
     a_tok = f"  in={answer_call['in']} out={answer_call['out']}" if answer_call else ""
     a_ms  = f"  {answer_call['ms']:.0f}ms" if answer_call else ""
     score_bar = _score_bar(t.grounding_score)
     escalated = "  *** ESCALATED ***" if t.was_escalated else ""
     lines.append(f"  ANSWER{a_ms}{a_tok}   grounding {score_bar} {t.grounding_score:.2f}{escalated}")
-    for line in t.answer.splitlines():
-        lines.append(f"          {line}")
+    if answer_call:
+        # system prompt
+        sys_text = (answer_call.get("system") or "").strip()
+        for line in sys_text.splitlines():
+            lines.append(f"  [SYS]   {line}")
+        lines.append("")
+        # → sent: history + context/question
+        for msg in (answer_call.get("history_msgs") or []):
+            role = "U" if msg["role"] == "user" else "B"
+            lines.append(f"  →  [{role}] {msg['content'].replace(chr(10), ' ')}")
+        sent = (answer_call.get("prompt") or "").strip()
+        for line in sent.splitlines():
+            lines.append(f"  →       {line}")
+        # ← back
+        reply = (answer_call.get("reply") or "").strip()
+        for line in reply.splitlines():
+            lines.append(f"  ←       {line}")
+    else:
+        for line in t.answer.splitlines():
+            lines.append(f"          {line}")
+    lines.append("")
+
+    # ── TOKENS ────────────────────────────────────────────────────────────────
+    total_in = total_out = 0
+    for c in t.llm_calls:
+        in_t, out_t = c.get("in", 0), c.get("out", 0)
+        total_in  += in_t
+        total_out += out_t
+        lines.append(f"  TOKENS  {c['step']:12s}  in={in_t:5d}  out={out_t:4d}  total={in_t+out_t:5d}")
+    if len(t.llm_calls) > 1:
+        lines.append(f"  TOKENS  {'ALL':12s}  in={total_in:5d}  out={total_out:4d}  total={total_in+total_out:5d}")
     lines.append("")
 
     # ── TIMING ────────────────────────────────────────────────────────────────

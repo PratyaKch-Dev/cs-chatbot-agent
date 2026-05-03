@@ -153,7 +153,7 @@ Run: `PYTHONPATH=. python scripts/test_faq.py --tenant hns --lang th`
  1   เบิกเงินได้ตั้งแต่กี่โมงครับ              1.00    เบิกเงินได้ตลอด 24 ชั่วโมง ทุกวันไม่เว้นวันหยุด
  2   เบิกได้กี่ครั้งต่อเดือนคะ                1.00    เบิกได้สูงสุด 5 ครั้งต่อเดือน
  3   เบิกได้สูงสุดเท่าไหร่                    0.90    50% ของวันทำงานจริง แต่ไม่เกิน 25,000 บาทต่อรอบ
- 4   เบิกขั้นต่ำต้องกี่บาทครับ               0.50    เบิกขั้นต่ำต้อง 500 บาทครับ
+ 4   เบิกขั้นต่ำต้องกี่บาทครับ               0.45    เบิกขั้นต่ำต้อง 500 บาทครับ
  5   วันหยุดเสาร์อาทิตย์เบิกเงินได้ไหมคะ     0.62    สามารถเบิกเงินในวันหยุดเสาร์อาทิตย์ได้ค่ะ
  6   เบิกได้ถึงวันที่เท่าไหร่ของเดือน         1.00    รอบ 16-15 เบิกได้วันที่ 23–15 / รอบ 21-20, 26-25 เบิกได้วันที่ 1–20
  7   เบิกแล้วเงินเข้าบัญชีไหนครับ             0.91    บัญชีเงินเดือนที่บริษัทจ่ายปกติ ภายใน 24 ชั่วโมง
@@ -608,7 +608,7 @@ Turn 1
 
 Turn 2
   User:   ผมใช้ iOS
-  Router: followup · faq_followup · confidence=0.88
+  Router: followup · faq_followup · confidence=0.50
           remark changed → platform change → rerun retrieval
   Bot:    returns iOS-specific download link
   Redis:  update remark to "user clarified they use iOS"
@@ -625,13 +625,13 @@ Turn 1
 
 Turn 2
   User:   แจ้ง HR แล้ว ฝากเช็คให้อีกทีครับ
-  Router: followup · troubleshooting_recheck · confidence=0.93
+  Router: followup · troubleshooting_recheck · confidence=0.50
   Bot:    call API again → compare with previous root_cause
           fixed     → "ตอนนี้ทุกอย่างปกติแล้วค่ะ"
           not fixed → "ยังพบปัญหาในวันที่..."
 
 Turn 3
   User:   ตอนนี้เป็นปกติหรือยัง
-  Router: ambiguous · confidence=0.71 → active context exists → troubleshooting_recheck
+  Router: ambiguous · confidence=0.50 → active context exists → troubleshooting_recheck
   Bot:    call API again → answer with latest status
 ```

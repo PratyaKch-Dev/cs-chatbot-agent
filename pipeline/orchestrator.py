@@ -18,7 +18,7 @@ Usage:
 
 import time
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from pipeline.router import decide_route, Route
@@ -66,6 +66,8 @@ TROUBLESHOOTING_SYSTEM_PROMPT = {
 class MessageResult:
     answer: str
     trace: Optional[str] = None
+    image_urls: list = field(default_factory=list)
+    was_escalated: bool = False
 
 
 def _build_system_with_summary(base_system: str, summary: str) -> str:
@@ -208,7 +210,7 @@ def handle_message(
     )
     trace.flush()
 
-    return MessageResult(answer=answer.text)
+    return MessageResult(answer=answer.text, image_urls=answer.image_urls, was_escalated=answer.was_escalated)
 
 
 # ── Pipeline sub-handlers ────────────────────────────────────────────────��────
@@ -285,26 +287,37 @@ def _run_troubleshooting_new(
 
 def _run_faq_followup(
     message, language, tenant_id, user_id,
-    active_ctx, decision, redis_history, summary, trace,
+    active_ctx, decision, redis_history, summary, trace,  # noqa: ARG001 active_ctx kept for signature compat
 ):
-    topic = (active_ctx or {}).get("topic", "")
-    retrieval_query = f"{topic} {message}".strip() if topic else message
+    rag_query = decision.search_query or message
     trace.set_route(route=str(Route.FAQ), reason=f"faq_followup: {decision.reason}")
     _t0 = time.perf_counter()
-    result = retrieve(retrieval_query, tenant_id, language, top_k=3)
+    result = retrieve(rag_query, tenant_id, language, top_k=3)
     trace.mark_step("retrieval", (time.perf_counter() - _t0) * 1000)
-    trace.set_retrieval(
-        query_used=f"[followup] {result.query_used}",
-        collection=result.collection, documents=result.documents,
-    )
+    q_label = f"[rewrite] {result.query_used}" if decision.search_query else f"[followup] {result.query_used}"
+    trace.set_retrieval(query_used=q_label, collection=result.collection, documents=result.documents)
+
     context   = build_context(result.documents, language)
     top_score = result.documents[0].score if result.documents else 0.0
-    system = _build_system_with_summary(SYSTEM_PROMPT.get(language, SYSTEM_PROMPT["th"]), summary)
+
+    # Always inject previous FAQ answer — it's always relevant for follow-ups
+    cached_faq = load_faq_context(tenant_id, user_id)
+    if cached_faq:
+        prev = (f"[Previous answer on related topic]\n"
+                f"Q: {cached_faq['question']}\nA: {cached_faq['answer']}\n\n")
+        context = prev + context if context else prev
+
+    from pipeline.answer_generator import FOLLOWUP_SYSTEM_PROMPT
+    base   = FOLLOWUP_SYSTEM_PROMPT.get(language, FOLLOWUP_SYSTEM_PROMPT["th"])
+    system = _build_system_with_summary(base, summary)
     answer = generate_answer(
         message=message, context=context, language=language, tenant_id=tenant_id,
         intent="question", history=redis_history, route=str(Route.FAQ),
-        top_retrieval_score=top_score, system_prompt_override=system,
+        top_retrieval_score=max(top_score, 0.45) if cached_faq else top_score,
+        system_prompt_override=system,
     )
+    if result.documents and result.documents[0].image_urls:
+        answer.image_urls = result.documents[0].image_urls
     save_faq_context(tenant_id, user_id, question=message,
                      retrieved_docs=[d.answer for d in result.documents], answer=answer.text)
     ac.update_remark(tenant_id, user_id, message)
@@ -316,24 +329,41 @@ def _run_faq(
     decision, redis_history, summary, trace,
 ):
     cached_faq = load_faq_context(tenant_id, user_id)
-    retrieval_query = message
-    if len(message.strip()) < 25 and redis_history:
-        last_user_msgs = [m["content"] for m in redis_history if m["role"] == "user"]
-        if last_user_msgs:
-            retrieval_query = f"{last_user_msgs[-1]} {message}"
+    rag_query  = decision.search_query or message
 
     trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
     _t0 = time.perf_counter()
-    result = retrieve(retrieval_query, tenant_id, language, top_k=3)
+    result = retrieve(rag_query, tenant_id, language, top_k=3)
     trace.mark_step("retrieval", (time.perf_counter() - _t0) * 1000)
-    trace.set_retrieval(
-        query_used=result.query_used if retrieval_query == message else f"[enriched] {result.query_used}",
-        collection=result.collection, documents=result.documents,
-    )
+    q_label = f"[rewrite] {result.query_used}" if decision.search_query else result.query_used
+    trace.set_retrieval(query_used=q_label, collection=result.collection, documents=result.documents)
+
     context   = build_context(result.documents, language)
     top_score = result.documents[0].score if result.documents else 0.0
+    top_doc   = result.documents[0] if result.documents else None
 
-    if cached_faq and top_score < 0.4:
+    # High-confidence match: return the article answer + image verbatim.
+    # Articles with images: the image IS the answer — always direct-pass, LLM must not be in the middle.
+    # Text-only articles: require gap ≥ 0.05 vs rank #2 to avoid returning wrong article when two are close.
+    _rank2_score = result.documents[1].score if len(result.documents) > 1 else 0.0
+    _gap = top_score - _rank2_score
+    _has_image = bool(top_doc and top_doc.image_urls)
+    if top_doc and top_score >= 0.45 and not cached_faq and (_has_image or _gap >= 0.05):
+        from pipeline.answer_generator import GeneratedAnswer
+        answer = GeneratedAnswer(
+            text=top_doc.answer,
+            grounding_score=1.0,
+            was_escalated=False,
+            route_taken=str(decision.route),
+            image_urls=top_doc.image_urls,
+        )
+        save_faq_context(tenant_id, user_id, question=message,
+                         retrieved_docs=[d.answer for d in result.documents], answer=answer.text)
+        ac.save_faq_context(tenant_id, user_id, topic=message[:60],
+                            remark=message, last_user_need=message)
+        return answer
+
+    if cached_faq and top_score < 0.6:
         prev = (f"[Previous answer on related topic]\n"
                 f"Q: {cached_faq['question']}\nA: {cached_faq['answer']}\n\n")
         context = prev + context if context else prev
@@ -344,6 +374,8 @@ def _run_faq(
         intent="question", history=redis_history, route=str(decision.route),
         top_retrieval_score=top_score, system_prompt_override=system,
     )
+    if top_doc and top_doc.image_urls:
+        answer.image_urls = top_doc.image_urls
     save_faq_context(tenant_id, user_id, question=message,
                      retrieved_docs=[d.answer for d in result.documents], answer=answer.text)
     ac.save_faq_context(tenant_id, user_id, topic=message[:60],

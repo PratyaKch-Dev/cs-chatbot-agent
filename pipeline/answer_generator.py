@@ -9,7 +9,7 @@ Produces the final response with quality controls:
 """
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -40,15 +40,38 @@ def get_chitchat_template(template_key: str, lang: str) -> str:
     """Return the template text for a given key and language, or empty string."""
     return _load_chitchat_templates().get(template_key, {}).get(lang, "")
 
+FOLLOWUP_SYSTEM_PROMPT = {
+    "th": (
+        "คุณคือผู้ช่วย AI ของ Salary Hero สำหรับตอบคำถามด้าน HR และการเงิน\n"
+        "กฎเหล็ก:\n"
+        "- ใช้ข้อมูลจาก Context ด้านล่าง **และ** ประวัติการสนทนา (bot message ก่อนหน้า) ประกอบกัน\n"
+        "- ห้ามเพิ่มเติม คาดเดา หรือสร้างข้อมูลใดๆ ที่ไม่มีอยู่ใน Context หรือประวัติ\n"
+        "- ห้ามขึ้นต้นคำตอบด้วย 'จากข้อมูล', 'ตามข้อมูล', 'จากบริบท' หรือประโยคอ้างอิงใดๆ\n"
+        "- ห้ามเพิ่มหัวข้อแนะนำคำถามเพิ่มเติมท้ายคำตอบ\n"
+        "- ห้ามลงท้ายด้วยประโยคปิด — จบคำตอบที่ข้อมูลสุดท้ายได้เลย\n"
+        "- ตอบเฉพาะคำถามที่ถามเท่านั้น\n"
+        "- หากไม่พบคำตอบใน Context หรือประวัติ ให้ตอบว่า 'ขออภัย ไม่มีข้อมูลในส่วนนี้ กรุณาติดต่อ HR โดยตรงค่ะ'\n"
+        "ตอบกระชับ ชัดเจน และเป็นมิตร"
+    ),
+    "en": (
+        "You are Salary Hero's AI assistant for HR and payroll questions.\n"
+        "Rules:\n"
+        "- Use information from the Context below AND the conversation history (previous bot messages).\n"
+        "- Do NOT add, infer, or invent details not found in Context or history.\n"
+        "- Do NOT start with 'Based on the context' or similar phrasing — answer directly.\n"
+        "- Do NOT add follow-up question sections or closing sentences.\n"
+        "- Answer only the question asked.\n"
+        "- If the answer is not in Context or history, say: 'Sorry, I don't have that information. Please contact HR directly.'\n"
+        "Be concise, clear, and friendly."
+    ),
+}
+
 SYSTEM_PROMPT = {
     "th": (
         "คุณคือผู้ช่วย AI ของ Salary Hero สำหรับตอบคำถามด้าน HR และการเงิน\n"
         "กฎเหล็ก:\n"
         "- ใช้เฉพาะข้อมูลที่ปรากฏใน Context ด้านล่างเท่านั้น\n"
         "- ห้ามเพิ่มเติม คาดเดา หรือสร้างข้อมูลใดๆ ที่ไม่มีอยู่ใน Context โดยเด็ดขาด\n"
-        "- ก่อนตอบ ตรวจสอบว่า Context ตอบคำถามที่ถามโดยตรงหรือไม่ "
-        "หาก Context พูดถึงเรื่องอื่น"
-        "ให้ตอบว่า 'ขออภัย ไม่มีข้อมูลในส่วนนี้ กรุณาติดต่อ HR โดยตรงค่ะ' ห้ามนำข้อมูลนั้นมาตอบคำถามที่ต่างออกไป\n"
         "- ห้ามขึ้นต้นคำตอบด้วย 'จากข้อมูล', 'ตามข้อมูล', 'จากบริบท' หรือประโยคอ้างอิง Context ใดๆ ให้ตอบตรงๆ เลย\n"
         "- ห้ามเพิ่มหัวข้อหรือประโยคแนะนำคำถามเพิ่มเติมใดๆ ท้ายคำตอบ เช่น 'คำถามที่เกี่ยวข้อง', 'สำหรับคำถามเพิ่มเติม', 'คุณอาจถาม' ฯลฯ\n"
         "- ห้ามลงท้ายด้วยประโยคปิด เช่น 'หวังว่าจะเป็นประโยชน์', 'หากมีข้อสงสัยเพิ่มเติม' ฯลฯ — จบคำตอบที่ข้อมูลสุดท้ายได้เลย\n"
@@ -62,6 +85,7 @@ SYSTEM_PROMPT = {
         "- Use ONLY information explicitly present in the Context below.\n"
         "- Do NOT add, infer, or invent any details not found in the Context.\n"
         "- Do NOT start your answer with 'Based on the context', 'According to the context', or any similar phrasing — answer directly.\n"
+        "- If the Context contains related information even if not an exact match, use it to answer as best you can.\n"
         "- Do NOT add any follow-up question sections at the end — no 'Related questions', 'You might also ask', 'For more questions', etc.\n"
         "- Do NOT add a closing sentence like 'I hope this helps' or 'Feel free to ask' — end at the last piece of information.\n"
         "- Answer only the question asked — nothing more.\n"
@@ -83,6 +107,7 @@ class GeneratedAnswer:
     was_escalated: bool = False
     handoff_context: Optional[dict] = None
     route_taken: str = ""
+    image_urls: list = field(default_factory=list)
 
 
 def generate_answer(
@@ -157,10 +182,10 @@ def generate_answer(
     # trust the answer even if Thai polite particles reduce word-overlap score.
     high_retrieval = top_retrieval_score >= 0.4
     is_troubleshooting = "TROUBLESHOOTING" in route.upper()
-    # score == 0.0 means the LLM returned an error/fallback text — no word overlap
-    # with context at all. Always escalate in this case (API failure), regardless of
-    # retrieval score.
-    llm_failed = score == 0.0
+    # score == 0.0 means the LLM returned empty/error text. Only treat as failure
+    # when retrieval was also weak — if retrieval found a strong match (high_retrieval),
+    # trust the LLM's answer and don't double-escalate.
+    llm_failed = score == 0.0 and not high_retrieval
     escalate = (
         (score < HANDOFF_THRESHOLD and not high_retrieval) or llm_failed
     ) and not is_troubleshooting

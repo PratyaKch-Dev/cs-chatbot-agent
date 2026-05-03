@@ -7,7 +7,7 @@ from agent.clients.base import BaseAttendanceClient
 from agent.clients.mock.data_loader import get_user
 
 # Configurable via environment variable; real API enforces the same cap server-side
-MAX_ATTENDANCE_DAYS = int(os.environ.get("MAX_ATTENDANCE_DAYS", "30"))
+MAX_ATTENDANCE_DAYS = int(os.environ.get("MAX_ATTENDANCE_DAYS", "60"))
 
 
 class MockAttendanceClient(BaseAttendanceClient):

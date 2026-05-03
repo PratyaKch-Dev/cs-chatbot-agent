@@ -26,12 +26,8 @@
       ]
     },
     "deductions": {
-      "period": "2026-03",
       "total_deducted": 600.0,
-      "items": [
-        {"type": "absent", "amount": 500.0, "description": "หักขาดงาน 1 วัน", "date": "2026-03-26"},
-        {"type": "late",   "amount": 100.0, "description": "หักมาสาย 2 ครั้ง", "date": "2026-03-25"}
-      ]
+      "deductions_updated_at": "2026-03-27T02:00:00"
     },
     "sync": {
       "last_sync": "2026-03-27T02:00:00",
@@ -225,6 +221,47 @@
     "sync": {
       "last_sync": "2026-03-27T02:00:00",
       "next_sync": "2026-03-28T02:00:00",
+      "sync_status": "synced"
+    }
+  },
+
+  "EMP007": {
+    "_scenario": "Deductions reduce balance to 0 — eligible_for_withdrawal false, no blacklist",
+    "profile": {
+      "employee_id": "EMP007",
+      "name": "อรุณ บุญมา",
+      "status": "active",
+      "eligible_for_withdrawal": false,
+      "blacklisted": false,
+      "enrollment_date": "2025-01-15"
+    },
+    "paycycle": {
+      "start_date": "2026-04-01",
+      "end_date": "2026-04-30"
+    },
+    "attendance": {
+      "total_present": 18,
+      "total_absent": 2,
+      "total_late": 3,
+      "records": [
+        {"date": "2026-04-21", "check_in": "08:55", "check_out": "18:00", "remarks": null},
+        {"date": "2026-04-22", "check_in": "09:00", "check_out": "18:05", "remarks": null},
+        {"date": "2026-04-23", "check_in": "08:50", "check_out": "18:00", "remarks": null},
+        {"date": "2026-04-24", "check_in": "09:00", "check_out": "18:00", "remarks": null},
+        {"date": "2026-04-25", "check_in": "09:00", "check_out": "18:00", "remarks": null}
+      ]
+    },
+    "deductions": {
+      "period": "2026-04",
+      "total_deducted": 1300.0,
+      "items": [
+        {"type": "absent", "amount": 1000.0, "description": "หักขาดงาน 2 วัน", "date": "2026-04-14"},
+        {"type": "late",   "amount": 300.0,  "description": "หักมาสาย 3 ครั้ง", "date": "2026-04-17"}
+      ]
+    },
+    "sync": {
+      "last_sync": "2026-04-26T02:00:00",
+      "next_sync": "2026-04-27T02:00:00",
       "sync_status": "synced"
     }
   }
