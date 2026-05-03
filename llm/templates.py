@@ -7,7 +7,11 @@ All templates must be available in both Thai and English.
 
 from llm.intent import Intent
 
+FILE_NOT_SUPPORTED = "file_not_supported"
+IMAGE_CAPTION_PREFIX = "[ภาพ] "
+
 THAI_TEMPLATES: dict[str, str] = {
+    FILE_NOT_SUPPORTED: "ขอโทษค่ะ ระบบยังไม่รองรับไฟล์แนบค่ะ กรุณาพิมพ์คำถามของคุณได้เลยนะคะ 😊",
     Intent.GREETING: "สวัสดีค่ะ ยินดีให้บริการค่ะ มีอะไรให้ช่วยเหลือไหมคะ?",
     Intent.THANKS: "ยินดีให้บริการค่ะ หากมีข้อสงสัยเพิ่มเติม สามารถถามได้เลยนะคะ",
     Intent.GOODBYE: "ลาก่อนค่ะ หวังว่าจะได้ช่วยเหลือคุณได้อีกในครั้งต่อไปนะคะ",
@@ -20,6 +24,7 @@ THAI_TEMPLATES: dict[str, str] = {
 }
 
 ENGLISH_TEMPLATES: dict[str, str] = {
+    FILE_NOT_SUPPORTED: "Sorry, file attachments are not supported yet. Please type your question instead 😊",
     Intent.GREETING: "Hello! How can I help you today?",
     Intent.THANKS: "You're welcome! Feel free to ask if you have any more questions.",
     Intent.GOODBYE: "Goodbye! Hope I was able to help. Have a great day!",

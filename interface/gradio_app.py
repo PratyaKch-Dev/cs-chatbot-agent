@@ -15,6 +15,8 @@ load_dotenv()
 
 from pipeline.orchestrator import handle_message
 from pipeline.combiner import push, claim, is_current, complete, reset
+from llm.vision import describe_image
+from llm.templates import IMAGE_CAPTION_PREFIX
 import memory.active_context as ac
 from memory.history import clear_history
 from memory.context_cache import clear_context
@@ -85,6 +87,7 @@ def build_demo() -> gr.Blocks:
             label="Message",
             scale=4,
         )
+        img_input = gr.Image(type="filepath", label="ส่งรูปภาพ / Send image (optional)", scale=1)
 
         with gr.Row():
             send_btn  = gr.Button("Send", variant="primary")
@@ -98,13 +101,33 @@ def build_demo() -> gr.Blocks:
                 lines=28,
             )
 
-        def enqueue_msg(message, chatbot_state, committed, tenant_id, employee_id):
-            """Phase 1: instantly add message to queue and clear the input box."""
-            if not message.strip():
-                return chatbot_state, "", committed
-            push(tenant_id, employee_id, message)
-            # Show user bubble immediately; "" keeps it visible in Gradio 4.37+.
-            return chatbot_state + [[message, ""]], "", committed
+        def enqueue_msg(message, image_path, chatbot_state, committed, tenant_id, employee_id):
+            """Phase 1: instantly add message/image to queue and clear inputs."""
+            has_text  = bool(message and message.strip())
+            has_image = bool(image_path)
+            if not has_text and not has_image:
+                return chatbot_state, "", None, committed
+
+            new_turns = []
+            if has_image:
+                img_bytes   = Path(image_path).read_bytes()
+                suffix      = Path(image_path).suffix.lower()
+                media_type  = "image/png" if suffix == ".png" else "image/jpeg"
+                description = describe_image(img_bytes, media_type)
+
+                if has_text:
+                    # Combine into one message so the pipeline sees image as context for the question
+                    combined = f"{IMAGE_CAPTION_PREFIX}{description}\nคำถาม: {message.strip()}"
+                    push(tenant_id, employee_id, combined)
+                    new_turns.append([f"🖼️ {message.strip()}", ""])
+                else:
+                    push(tenant_id, employee_id, IMAGE_CAPTION_PREFIX + description)
+                    new_turns.append(["🖼️ (image)", ""])
+            elif has_text:
+                push(tenant_id, employee_id, message.strip())
+                new_turns.append([message.strip(), ""])
+
+            return chatbot_state + new_turns, "", None, committed
 
         def process_messages(committed, tenant_id, employee_id):
             """
@@ -154,10 +177,10 @@ def build_demo() -> gr.Blocks:
             clear_context(tenant_id, employee_id)
             ac.clear(tenant_id, employee_id)
             end_session(tenant_id, employee_id)
-            return [], "", "", []
+            return [], "", None, "", []
 
-        _enqueue_inputs  = [msg_input, chatbot, committed_state, tenant_input, emp_input]
-        _enqueue_outputs = [chatbot, msg_input, committed_state]
+        _enqueue_inputs  = [msg_input, img_input, chatbot, committed_state, tenant_input, emp_input]
+        _enqueue_outputs = [chatbot, msg_input, img_input, committed_state]
         _process_inputs  = [committed_state, tenant_input, emp_input]
         _process_outputs = [chatbot, trace_box, committed_state]
 
@@ -184,7 +207,7 @@ def build_demo() -> gr.Blocks:
         clear_btn.click(
             clear_all,
             inputs=[tenant_input, emp_input],
-            outputs=[chatbot, msg_input, trace_box, committed_state],
+            outputs=[chatbot, msg_input, img_input, trace_box, committed_state],
         )
 
     return demo

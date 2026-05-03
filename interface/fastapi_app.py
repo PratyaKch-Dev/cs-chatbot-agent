@@ -22,13 +22,17 @@ from linebot.v3 import WebhookParser
 from linebot.v3.messaging import (
     AsyncApiClient,
     AsyncMessagingApi,
+    AsyncMessagingApiBlob,
     Configuration,
     PushMessageRequest,
     TextMessage,
 )
-from linebot.v3.webhooks import MessageEvent, TextMessageContent
+from linebot.v3.webhooks import FileMessageContent, ImageMessageContent, MessageEvent, StickerMessageContent, TextMessageContent
 
 from interface.freshchat_app import router as freshchat_router
+from llm.templates import FILE_NOT_SUPPORTED, IMAGE_CAPTION_PREFIX, THAI_TEMPLATES
+from llm.intent import Intent
+from llm.vision import describe_image
 from memory.buffer import append as buffer_append
 from pipeline.orchestrator import handle_message
 
@@ -69,13 +73,26 @@ async def webhook(request: Request) -> Response:
     for event in events:
         if not isinstance(event, MessageEvent):
             continue
-        if not isinstance(event.message, TextMessageContent):
-            continue
 
         user_id = event.source.user_id
         tenant_id = _resolve_tenant(event)
-        message = event.message.text
 
+        if isinstance(event.message, StickerMessageContent):
+            asyncio.create_task(_push_text(user_id, THAI_TEMPLATES[Intent.GREETING]))
+            continue
+
+        if isinstance(event.message, FileMessageContent):
+            asyncio.create_task(_push_text(user_id, THAI_TEMPLATES[FILE_NOT_SUPPORTED]))
+            continue
+
+        if isinstance(event.message, ImageMessageContent):
+            asyncio.create_task(_handle_image(tenant_id, user_id, event.message.id))
+            continue
+
+        if not isinstance(event.message, TextMessageContent):
+            continue
+
+        message = event.message.text
         buffer_key = f"{tenant_id}:{user_id}"
         await buffer_append(
             key=buffer_key,
@@ -119,6 +136,36 @@ def _make_flush_handler(tenant_id: str, user_id: str):
         _logger.info(f"[webhook] {tenant_id}/{user_id} reply sent")
 
     return on_flush
+
+
+async def _push_text(user_id: str, text: str) -> None:
+    async with AsyncApiClient(configuration) as api_client:
+        await AsyncMessagingApi(api_client).push_message(
+            PushMessageRequest(to=user_id, messages=[TextMessage(text=text)])
+        )
+
+
+async def _handle_image(tenant_id: str, user_id: str, message_id: str) -> None:
+    """Download LINE image, describe via vision, then buffer as text for the pipeline."""
+    try:
+        async with AsyncApiClient(configuration) as api_client:
+            blob_api = AsyncMessagingApiBlob(api_client)
+            content = await blob_api.get_message_content(message_id)
+            image_bytes = content if isinstance(content, bytes) else await content.read()
+
+        loop = asyncio.get_event_loop()
+        description = await loop.run_in_executor(None, lambda: describe_image(image_bytes))
+        message = IMAGE_CAPTION_PREFIX + description
+
+        buffer_key = f"{tenant_id}:{user_id}"
+        await buffer_append(
+            key=buffer_key,
+            message=message,
+            on_flush=_make_flush_handler(tenant_id, user_id),
+        )
+    except Exception as exc:
+        _logger.warning(f"[webhook] image handling failed for {user_id}: {exc}")
+        await _push_text(user_id, THAI_TEMPLATES[FILE_NOT_SUPPORTED].replace("ไฟล์แนบ", "รูปภาพ"))
 
 
 def _resolve_tenant(event: Any) -> str:
