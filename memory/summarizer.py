@@ -61,7 +61,7 @@ def load_summary(tenant_id: str, user_id: str, language: str) -> str:
         value = get_redis_client().get(_summary_key(tenant_id, user_id, language))
         return value or ""
     except Exception as e:
-        _logger.warning(f"[summarizer] load failed: {e}")
+        _logger.debug(f"[summarizer] load skipped: {e}")
         return ""
 
 
@@ -129,6 +129,6 @@ def _save_summary(tenant_id: str, user_id: str, language: str, summary: str) -> 
             summary,
         )
     except Exception as e:
-        _logger.warning(f"[summarizer] save failed: {e}")
+        _logger.debug(f"[summarizer] save skipped: {e}")
 
 

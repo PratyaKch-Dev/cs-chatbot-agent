@@ -26,3 +26,5 @@ Add a new file here each time something is updated — never edit old entries.
 | [011](changes/011_gemini_support_and_perf.md) | 2026-04-16 | Gemini 2.5 Flash support + pipeline performance improvements | feature + refactor | 2 |
 | [012](changes/012_multiturn_flow_and_memory_config.md) | 2026-04-20 | Multi-turn Flow & Memory Config | feature + refactor | 2 |
 | [013](changes/013_solutions_faq_pipeline_and_template_refinements.md) | 2026-05-03 | Solutions FAQ Pipeline + Answer Template Refinements | feature + data + refactor | 2 |
+| [014](changes/014_redis_circuit_breaker_and_multi_message_combiner.md) | 2026-05-03 | Redis Circuit Breaker & Multi-Message Combiner | fix + feature | 2 |
+| [015](changes/015_handoff_skill_and_session_resume.md) | 2026-05-03 | Handoff Skill & Session Resume | config | pre-phase |

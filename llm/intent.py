@@ -31,7 +31,7 @@ class IntentResult:
 
 INTENT_KEYWORDS: dict[str, dict[str, list[str]]] = {
     "greeting": {
-        "th": ["สวัสดี", "หวัดดี", "ดีครับ", "ดีค่ะ", "ฮัลโหล", "หวัดดีครับ", "หวัดดีค่ะ"],
+        "th": ["สวัสดี", "หวัดดี", "ดีครับ", "ดีคับ", "ดีค่ะ", "ดีคะ", "ฮัลโหล", "หวัดดีครับ", "หวัดดีค่ะ"],
         "en": ["hello", "hi", "hey", "good morning", "good afternoon", "good evening"],
     },
     "thanks": {

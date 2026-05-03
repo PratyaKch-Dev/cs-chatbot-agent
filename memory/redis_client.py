@@ -14,15 +14,18 @@ import os
 import redis
 
 _client: redis.Redis | None = None
+_available: bool | None = None  # None = untested, True = ok, False = down
 _logger = logging.getLogger("memory.redis")
 
 
 def get_redis_client() -> redis.Redis:
     """
     Return the Redis client singleton.
-    Creates the connection on first call using REDIS_URL env var.
+    Raises redis.RedisError if Redis is known to be unavailable (circuit open).
     """
-    global _client
+    global _client, _available
+    if _available is False:
+        raise redis.RedisError("Redis unavailable (circuit open)")
     if _client is None:
         url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
         _client = redis.from_url(
@@ -31,14 +34,20 @@ def get_redis_client() -> redis.Redis:
             socket_connect_timeout=2,
             socket_timeout=2,
         )
-        _logger.info(f"[Redis] connected to {url}")
     return _client
 
 
 def check_redis_health() -> bool:
-    """Ping Redis and return True if healthy."""
+    """Ping Redis, update circuit state, return True if healthy."""
+    global _available
     try:
-        return get_redis_client().ping()
+        get_redis_client().ping()
+        if _available is not True:
+            _logger.info("[Redis] connection OK")
+        _available = True
+        return True
     except Exception as e:
-        _logger.warning(f"[Redis] health check failed: {e}")
+        if _available is not False:
+            _logger.warning(f"[Redis] unavailable — memory features disabled: {e}")
+        _available = False
         return False

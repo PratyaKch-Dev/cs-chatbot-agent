@@ -1,5 +1,8 @@
 # CS Chatbot Agent — Claude Code Guidelines
 
+## Session Resume
+If `.claude/last_compact_summary.md` exists, read it silently at session start to restore context. Do not re-read project files unless the task requires it.
+
 ## Project
 
 RAG-powered Customer Support chatbot for Salary Hero. Serves LINE messaging users in Thai + English.
@@ -80,3 +83,18 @@ python indexers/inspect_qdrant.py
 
 Required: `ANTHROPIC_API_KEY`, `QDRANT_HOST`, `QDRANT_API_KEY`, `REDIS_URL`, `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`
 Optional: `PINECONE_API_KEY`, `VECTOR_BACKEND` (qdrant|pinecone), `ENABLE_EMBEDDING_CACHE`, `ENABLE_PARALLEL_PROCESSING`
+
+## Token Saving Rules
+
+When the user says "save tokens", "less token", "token saving mode", or similar — follow ALL of these:
+
+- Read only the specific file/lines mentioned. Never explore the repo broadly.
+- Do not read files unless directly required for the task.
+- Skip `/changelog` unless user explicitly asks for it.
+- Prefer `Edit` over `Read` + rewrite. Prefer targeted edits over full rewrites.
+- Do not run exploratory bash commands (find, grep across whole repo) unless asked.
+- Respond concisely — no summaries, no recaps, no "here's what I did".
+- Use `Explore` subagent for any search that needs more than 2 grep/find calls.
+- Remind the user to `/compact` after every 2–3 task completions.
+- Suggest `/clear` before starting an unrelated new task.
+- Suggest switching to `/model claude-haiku-4-5` for simple single-file edits.

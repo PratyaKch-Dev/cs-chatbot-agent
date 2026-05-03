@@ -26,6 +26,10 @@ def _warmup_models() -> None:
     get_reranker_model()
     log.info(f"Models ready in {(time.perf_counter() - t0)*1000:.0f}ms")
 
+    # Open Redis circuit early so connection errors surface once, not per-message
+    from memory.redis_client import check_redis_health
+    check_redis_health()
+
 
 def run_api() -> None:
     """Start the FastAPI server for LINE webhook."""
@@ -41,7 +45,7 @@ def run_gradio() -> None:
     from interface.gradio_app import demo
 
     _warmup_models()
-    demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
+    demo.queue().launch(server_name="0.0.0.0", server_port=7860, share=False)
 
 
 def main() -> None:

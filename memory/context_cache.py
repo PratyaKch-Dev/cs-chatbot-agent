@@ -71,7 +71,7 @@ def load_context(tenant_id: str, user_id: str) -> Optional[dict]:
         raw = get_redis_client().get(_cache_key(tenant_id, user_id))
         return json.loads(raw) if raw else None
     except Exception as e:
-        _logger.warning(f"[context_cache] load failed: {e}")
+        _logger.debug(f"[context_cache] load failed: {e}")
         return None
 
 
@@ -99,7 +99,7 @@ def clear_context(tenant_id: str, user_id: str) -> None:
         from memory.redis_client import get_redis_client
         get_redis_client().delete(_cache_key(tenant_id, user_id))
     except Exception as e:
-        _logger.warning(f"[context_cache] clear failed: {e}")
+        _logger.debug(f"[context_cache] clear failed: {e}")
 
 
 # ── Internal ──────────────────────────────────────────────────────────────────
@@ -113,6 +113,6 @@ def _save(tenant_id: str, user_id: str, data: dict, ttl: int = DIAGNOSTIC_CONTEX
             json.dumps(data, ensure_ascii=False),
         )
     except Exception as e:
-        _logger.warning(f"[context_cache] save failed: {e}")
+        _logger.debug(f"[context_cache] save failed: {e}")
 
 
