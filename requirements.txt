@@ -23,6 +23,7 @@ langchain-google-genai==1.0.7
 
 # Embeddings & Reranking
 sentence-transformers==3.0.1
+joblib==1.4.2
 torch==2.3.1
 transformers==4.42.4
 

@@ -64,6 +64,7 @@ def call_llm(
     max_tokens: int = DEFAULT_MAX_TOKENS,
     language: str = "th",
     step: str = "answer",
+    json_mode: bool = False,
 ) -> str:
     """
     One-shot LLM call. Returns reply text.
@@ -78,7 +79,7 @@ def call_llm(
     """
     try:
         t0 = time.perf_counter()
-        response = get_provider().chat(messages, system=system, max_tokens=max_tokens)
+        response = get_provider().chat(messages, system=system, max_tokens=max_tokens, json_mode=json_mode)
         latency_ms = round((time.perf_counter() - t0) * 1000, 1)
 
         # Push to active pipeline trace (no-op when no trace is active)

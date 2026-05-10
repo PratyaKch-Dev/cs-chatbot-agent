@@ -1,0 +1,65 @@
+# ── Global defaults ────────────────────────────────────────────────────────────
+global:
+  confirmation:
+    faq_low_confidence_threshold: 0.4   # append confirmation when grounding score < this
+
+  faq_handoff:                           # triggered when low-confidence FAQ user replies "ยังไม่ได้"
+    enabled: true
+    handoff_to: cs
+
+# ── Troubleshooting flows ──────────────────────────────────────────────────────
+# stage_order is authoritative — orchestrator iterates this list, never relies on YAML object order.
+# confirmation is always last in stage_order — it returns immediately and waits for user reply.
+# handoff is NOT in stage_order — runs only when Context Resolver produces TRIGGER_HANDOFF.
+
+troubleshooting_withdrawal:
+  stage_order:
+    - api_check
+    - confirmation
+  api_check:
+    tools: [user_profile_api, attendance_api]
+    diagnose: [blacklist, inactive, sync_pending, attendance_issue, deduction_issue]
+  confirmation:
+    enabled: true
+  handoff:
+    enabled: true
+    handoff_to: cs
+
+troubleshooting_signup:
+  stage_order:
+    - faq_first
+    - confirmation
+  faq_first:
+    qdrant_filter: [login, non_login]
+    skip_confirmation_if_score_above: 0.75
+  confirmation:
+    enabled: true
+  handoff:
+    enabled: true
+    handoff_to: cs
+
+troubleshooting_cant_find_company:
+  stage_order:
+    - faq_first
+    - confirmation
+  faq_first:
+    qdrant_filter: [login, non_login]
+    skip_confirmation_if_score_above: 0.75
+  confirmation:
+    enabled: true
+  handoff:
+    enabled: true
+    handoff_to: cs
+
+troubleshooting_money_not_arrived:
+  stage_order:
+    - faq_first
+    - confirmation
+  faq_first:
+    qdrant_filter: [feature_sod]
+    skip_confirmation_if_score_above: 0.75
+  confirmation:
+    enabled: true
+  handoff:
+    enabled: true
+    handoff_to: cs

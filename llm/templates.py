@@ -9,6 +9,7 @@ from llm.intent import Intent
 
 FILE_NOT_SUPPORTED = "file_not_supported"
 IMAGE_CAPTION_PREFIX = "[ภาพ] "
+GLAD_TO_HELP = "glad_to_help"
 
 THAI_TEMPLATES: dict[str, str] = {
     FILE_NOT_SUPPORTED: "ขอโทษค่ะ ระบบยังไม่รองรับไฟล์แนบค่ะ กรุณาพิมพ์คำถามของคุณได้เลยนะคะ 😊",
@@ -21,6 +22,7 @@ THAI_TEMPLATES: dict[str, str] = {
     ),
     Intent.CONFUSED: "ขอโทษนะคะ ช่วยอธิบายปัญหาให้ละเอียดขึ้นได้ไหมคะ?",
     Intent.UNCLEAR: "กรุณาบอกรายละเอียดเพิ่มเติมได้เลยค่ะ เพื่อที่เราจะได้ช่วยได้ถูกต้องค่ะ",
+    GLAD_TO_HELP: "ยินดีที่ได้ช่วยเหลือค่ะ 😊 หากมีข้อสงสัยเพิ่มเติม สามารถถามได้เลยนะคะ",
 }
 
 ENGLISH_TEMPLATES: dict[str, str] = {
@@ -34,7 +36,27 @@ ENGLISH_TEMPLATES: dict[str, str] = {
     ),
     Intent.CONFUSED: "I'm sorry for the confusion. Could you describe your issue in more detail?",
     Intent.UNCLEAR: "Could you please provide more details so I can assist you correctly?",
+    GLAD_TO_HELP: "Happy to help! 😊 Feel free to ask if you have any more questions.",
 }
+
+_CONFIRMATION_TH = "\n\nรบกวนแจ้งผลให้ทราบด้วยค่ะ\n• แก้ไขเรียบร้อยแล้ว\n• ยังพบปัญหาอยู่"
+_CONFIRMATION_EN = "\n\nPlease let us know the result.\n• Issue resolved\n• Still experiencing the problem"
+
+# Extended confirmation — adds a "transfer to agent" option. Used after the
+# user has reported the problem multiple times so they can explicitly choose
+# escalation instead of being auto-routed to handoff.
+_CONFIRMATION_TH_WITH_TRANSFER = (
+    "\n\nรบกวนแจ้งผลให้ทราบด้วยค่ะ"
+    "\n• แก้ไขเรียบร้อยแล้ว"
+    "\n• ยังพบปัญหาอยู่"
+    "\n• ต้องการโอนไปให้เจ้าหน้าที่ช่วย"
+)
+_CONFIRMATION_EN_WITH_TRANSFER = (
+    "\n\nPlease let us know the result."
+    "\n• Issue resolved"
+    "\n• Still experiencing the problem"
+    "\n• Transfer me to a support agent"
+)
 
 
 def get_template(intent: str, language: str) -> str | None:
@@ -44,6 +66,27 @@ def get_template(intent: str, language: str) -> str | None:
     """
     templates = THAI_TEMPLATES if language == "th" else ENGLISH_TEMPLATES
     return templates.get(intent)
+
+
+_CONFIRMATION_MARKERS = ("รบกวนแจ้งผลให้ทราบ", "Please let us know the result")
+
+
+def append_confirmation(text: str, language: str, with_transfer: bool = False) -> str:
+    """
+    Append the confirmation prompt to an answer text.
+    Idempotent — if the marker is already present, returns the text unchanged
+    so callers can safely append from multiple stages without duplication.
+
+    `with_transfer=True` adds a third "transfer to agent" option, used after
+    the user has signalled the problem persists across multiple rechecks.
+    """
+    if any(m in text for m in _CONFIRMATION_MARKERS):
+        return text
+    if language == "th":
+        suffix = _CONFIRMATION_TH_WITH_TRANSFER if with_transfer else _CONFIRMATION_TH
+    else:
+        suffix = _CONFIRMATION_EN_WITH_TRANSFER if with_transfer else _CONFIRMATION_EN
+    return text.rstrip() + suffix
 
 
 def build_image_clarify_reply(

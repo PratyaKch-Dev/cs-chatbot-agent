@@ -108,7 +108,7 @@ def _update_summary(
         new_summary = call_llm(
             messages=[{"role": "user", "content": prompt}],
             system=_SUMMARY_SYSTEM[lang],
-            max_tokens=300,
+            max_tokens=1024,  # Gemini 2.5 Flash: thinking ~700 tokens + summary ~200 tokens
             language=lang,
             step="summarizer",
         )

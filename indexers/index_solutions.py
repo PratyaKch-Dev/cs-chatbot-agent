@@ -24,9 +24,14 @@ import argparse
 import csv
 import logging
 import os
+import sys
 from collections import defaultdict
 from pathlib import Path
 
+# Ensure project root is on sys.path when running this script directly
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+import yaml
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -39,9 +44,23 @@ from rag.query_cleaner import clean_query
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 _logger = logging.getLogger("index_solutions")
 
-DEFAULT_CSV  = "data/faqs/solutions_faq.csv"
-LANGUAGE     = "th"
-_DEFAULT_TAG = "default"
+DEFAULT_CSV    = "data/faqs/solutions_faq.csv"
+TENANTS_CONFIG = Path(__file__).parent.parent / "config" / "tenants.yaml"
+LANGUAGE       = "th"
+_DEFAULT_TAG   = "default"
+
+
+def _load_excluded_source_types(company_id: str) -> set[str]:
+    """Return source_types to skip for this company, from tenants.yaml."""
+    try:
+        with open(TENANTS_CONFIG, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        for tenant in (cfg or {}).get("tenants", {}).values():
+            if tenant.get("company_id") == company_id:
+                return set(tenant.get("excluded_source_types", []))
+    except Exception:
+        pass
+    return set()
 
 
 def _get_qdrant() -> QdrantClient:
@@ -62,18 +81,28 @@ def _is_default(row: dict) -> bool:
 
 
 def _index_rows(client: QdrantClient, rows: list[dict], company_id: str) -> int:
-    """Embed and upsert rows into {company_id}_th collection."""
+    """
+    Embed and upsert rows into {company_id}_th collection.
+
+    Wipes the collection before indexing so removed/renamed rows don't leak
+    through. Without this, positional-id upserts leave stale points behind
+    whenever the source CSV shrinks (e.g. after filtering flexben, after
+    deleting rows). Stale points then poison BGE/LLM rerank with old content.
+    """
     if not rows:
         return 0
 
     collection = f"{company_id}_{LANGUAGE}"
 
-    if not client.collection_exists(collection):
-        client.create_collection(
-            collection_name=collection,
-            vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
-        )
-        _logger.info(f"  created collection {collection}")
+    # Drop and recreate so every run yields a clean state.
+    if client.collection_exists(collection):
+        client.delete_collection(collection)
+        _logger.info(f"  wiped collection {collection}")
+    client.create_collection(
+        collection_name=collection,
+        vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
+    )
+    _logger.info(f"  created collection {collection}")
 
     texts = [
         clean_query(
@@ -128,23 +157,29 @@ def index_all(csv_path: str, only_company: str = "") -> None:
         n = _index_rows(client, default_rows, "salary_hero")
         _logger.info(f"  salary_hero_th  ← {n} default articles")
 
-    # 2. Per-company collections — company-specific + all defaults
+    # 2. Per-company collections — company-specific + filtered defaults
     for company_id, rows in sorted(by_company.items()):
         if only_company and company_id != only_company:
             continue
-        merged = rows + default_rows   # company-specific first, defaults appended
+        excluded = _load_excluded_source_types(company_id)
+        filtered_defaults = [r for r in default_rows if r.get("source_type", "") not in excluded] if excluded else default_rows
+        merged = rows + filtered_defaults
         n = _index_rows(client, merged, company_id)
+        excluded_note = f"  (excluded: {sorted(excluded)})" if excluded else ""
         _logger.info(
-            f"  {company_id}_th  ← {len(rows)} specific + {len(default_rows)} defaults = {n} total"
+            f"  {company_id}_th  ← {len(rows)} specific + {len(filtered_defaults)} defaults = {n} total{excluded_note}"
         )
 
     if only_company and only_company not in by_company and only_company != "salary_hero":
-        # Company not in solutions data — index defaults only for this tenant
+        # Company not in solutions data — index filtered defaults only for this tenant
+        excluded = _load_excluded_source_types(only_company)
+        filtered_defaults = [r for r in default_rows if r.get("source_type", "") not in excluded] if excluded else default_rows
         _logger.warning(
             f"  '{only_company}' has no specific articles; indexing defaults only"
         )
-        n = _index_rows(client, default_rows, only_company)
-        _logger.info(f"  {only_company}_th  ← {n} default articles (no company-specific data)")
+        n = _index_rows(client, filtered_defaults, only_company)
+        excluded_note = f"  (excluded: {sorted(excluded)})" if excluded else ""
+        _logger.info(f"  {only_company}_th  ← {n} default articles (no company-specific data){excluded_note}")
 
 
 def main() -> None:

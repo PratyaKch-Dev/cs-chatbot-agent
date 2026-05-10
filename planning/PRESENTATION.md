@@ -840,3 +840,180 @@ Turn 3
   Router: ambiguous · confidence=0.50 → active context exists → troubleshooting_recheck
   Bot:    call API again → answer with latest status
 ```
+
+---
+
+## v3 Updates — May 2026
+
+### Router labels (current)
+
+```
+chitchat_greeting | chitchat_thanks | chitchat_goodbye         → CHITCHAT
+chitchat_frustrated | chitchat_confused                         → CHITCHAT
+missing_info                                                    → MISSING_INFO
+troubleshooting_withdrawal                                      → TROUBLESHOOTING (live API)
+troubleshooting_signup                                          → FAQ (label kept for analytics)
+troubleshooting_cant_find_company                               → FAQ (label kept for analytics)
+troubleshooting_money_not_arrived                               → FAQ (label kept for analytics)
+troubleshooting_cant_receive_otp                                → FAQ (label kept for analytics)
+faq                                                             → FAQ
+```
+
+Only `troubleshooting_withdrawal` triggers a live API call. The other 4 troubleshooting
+labels are routed to the FAQ pipeline because their answers live in the FAQ catalog —
+we keep the labels for analytics and so future "FAQ-first → API" hybrids only need a
+one-line route flip.
+
+### Pinned-FAQ shortcut
+
+When the router emits `troubleshooting_signup / cant_find_company / money_not_arrived
+/ cant_receive_otp`, the orchestrator skips vector search entirely:
+
+```
+Router → label=troubleshooting_signup
+   ↓
+_TROUBLESHOOTING_FAQ_TITLES[label] → "ลงทะเบียนด้วยรหัสพนักงานและเลขบัตรประชาชน"
+   ↓
+_find_article_by_title(tenant, lang, title)  ← cached catalog (5 min TTL), exact-match
+   ↓
+Direct-pass: article.answer + article.image_urls verbatim     (~0ms, deterministic)
+```
+
+The pin fires regardless of `is_new` so followups also hit it. To change which
+article a label resolves to, edit `_TROUBLESHOOTING_FAQ_TITLES` at the top of
+`pipeline/orchestrator.py` — single source.
+
+### Smart FAQ retrieval pipeline (replaces the old "vector → BGE → LLM" path)
+
+```
+User query
+   ↓
+Pinned label?  → return canonical article (~0ms)
+   ↓ no
+Vector search (Qdrant top 25)
+   ↓
+BGE rerank (top 3, threshold 0.3)
+   ↓
+top_score >= 0.70                                  → trust BGE rank-1
+top_score in [0.55, 0.70) OR (#1 - #2 < 0.05)      → LLM smart rerank
+top_score < 0.55                                    → BGE full-scan over whole catalog
+   ↓
+LLM picker  (Flash-Lite, ~1.5s, max_tokens=16)
+   • picks best of top-N or returns -1
+   • on -1 with BGE top ≥ 0.45 → trust BGE anyway (BGE-trust safety net)
+   ↓
+Image attach: only when 5-gram overlap between LLM answer and top doc ≥ 30%
+   (prevents wrong image on novel answers like "Download from App Store")
+```
+
+Key thresholds (`pipeline/orchestrator.py`):
+- `_REWRITE_SCORE_THRESHOLD = 0.35` — query rewrite trigger
+- `_LLM_RERANK_GRAY_LOW = 0.55` — below this → full_scan instead of rerank
+- `_LLM_RERANK_GRAY_HIGH = 0.70` — above this → trust BGE
+- `_FULL_SCAN_TRIGGER_SCORE = 0.55` — below this → BGE full-scan as safety net
+
+### Indexer wipe-and-rebuild
+
+`indexers/index_solutions.py` now deletes-and-recreates the Qdrant collection on every
+run. Without this, positional-id `upsert` left stale rows behind whenever the source
+CSV shrank (e.g. flexben filter removed 15 rows). Stale rows poisoned BGE/LLM rerank
+with old content.
+
+### Tenant config
+
+```yaml
+hns:
+  company_id: happy_nest_space            # was "hns" — must match CSV company_id
+  vector_collections:
+    th: happy_nest_space_th               # was "hns_th" — must match the indexed collection
+  excluded_source_types:
+    - feature_flexben                     # filters out 15 default articles HNS doesn't use
+```
+
+`rag/retriever.py` now resolves the collection name via `vector_collections` from
+`tenants.yaml`, with fallback to `{tenant_id}_{language}` for backwards compat.
+
+### Troubleshooting recheck loop (user-controlled handoff)
+
+```
+Turn 1   USER: ทำไมเบิกเงินไม่ได้
+         BOT:  diagnose (live API call) + ตอบโจทย์ไหม?
+                 • แก้ไขเรียบร้อยแล้ว
+                 • ยังพบปัญหาอยู่                              (retry=0)
+
+Turn 2   USER: ยังเจออยู่ครับ                                  ← any "still problem" wording
+         BOT:  recheck (live API again) + ตอบโจทย์ไหม?
+                 • แก้ไขเรียบร้อยแล้ว
+                 • ยังพบปัญหาอยู่                              (retry=1)
+
+Turn 3   USER: เจออยู่
+         BOT:  recheck + ตอบโจทย์ไหม?                         (retry=2)
+
+Turn 4   USER: บอก hr แล้วก็ยังเจอ
+         BOT:  recheck + ตอบโจทย์ไหม?
+                 • แก้ไขเรียบร้อยแล้ว
+                 • ยังพบปัญหาอยู่
+                 • ต้องการโอนไปให้เจ้าหน้าที่ช่วย               ← 3rd option appears
+                                                                  at retry >= MAX (=3)
+
+Turn 5   USER: ต้องการโอนไปให้เจ้าหน้าที่ช่วย                  ← user opts in
+         BOT:  สรุปปัญหาของคุณ:
+                 • ปัญหา: การเบิกเงินล่วงหน้า
+                 • ผู้ใช้แจ้งปัญหาซ้ำ 3 ครั้ง
+                 กำลังโอนให้เจ้าหน้าที่ช่วยเหลือต่อค่ะ 🙏
+```
+
+| Detail | |
+|---|---|
+| `MAX_TROUBLESHOOTING_RETRIES = 3` | Threshold for revealing the transfer button — NOT for auto-handoff |
+| **Auto-escalation** | Removed for troubleshooting flows. Bot keeps rechecking until user opts in. |
+| **User-requested handoff** | Resolver detects `ต้องการโอน / ติดต่อเจ้าหน้าที่ / คุยกับคน / talk to agent` → fires `TRIGGER_HANDOFF` immediately |
+| **Counter persistence** | `save_troubleshooting_context()` preserves `retry_count` and `handoff_reason` when the same sub_type continues |
+| **Topic-preservation** | When the LLM router says `is_new=True` but the active sub_type matches → override to `is_new=False` so retry_count survives |
+| **Handoff summary** | Deterministic via `_SUB_TYPE_TOPIC_TH/EN` map in `pipeline/handoff.py` — never a truncated/garbled bullet |
+
+### Resolver heuristics (length-based)
+
+`_is_yes / _is_no / _is_end` only fire on messages ≤ 20 chars (pure resolution
+signals). Anything longer is treated as a compound message and routed to the
+LLM router with full context. This avoids regressions like
+"เข้ามาได้แล้ว ถอนเงินยังไงหรอ" being misclassified as just "ได้แล้ว" (yes).
+
+### Confirmation prompt (formal version, idempotent)
+
+```
+รบกวนแจ้งผลให้ทราบด้วยค่ะ                            ← retry < MAX
+• แก้ไขเรียบร้อยแล้ว
+• ยังพบปัญหาอยู่
+
+รบกวนแจ้งผลให้ทราบด้วยค่ะ                            ← retry >= MAX
+• แก้ไขเรียบร้อยแล้ว
+• ยังพบปัญหาอยู่
+• ต้องการโอนไปให้เจ้าหน้าที่ช่วย
+```
+
+`append_confirmation()` is idempotent — checking the marker
+`รบกวนแจ้งผลให้ทราบ` so the prompt can't be appended twice from different stages.
+
+### Active context — new fields
+
+```yaml
+intent: troubleshooting | faq
+sub_type: troubleshooting_withdrawal | troubleshooting_signup | ...
+topic: <human-readable label>
+remark: <user's last message>
+status: active | awaiting_confirmation | escalated | resolved | stale
+retry_count: 0..N                    # ← NEW: persisted across rechecks on same sub_type
+handoff_reason: ""                   # ← NEW: preserved on save when sub_type continues
+employee_id: <emp_id>
+last_root_cause: ok | sync_pending | suspended | ...
+updated_at: <iso timestamp>
+```
+
+### SetFit removal
+
+The 470 MB SetFit encoder was removed from the repo. The classifier file
+(`head.pkl`, 36 KB) and training script are kept for future retraining; if the
+encoder isn't loaded, `setfit_router.predict()` returns `None` and the router
+falls back to the LLM-only path with no behavioural change.
+

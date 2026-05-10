@@ -1,11 +1,10 @@
 """
 Troubleshooting planner — deterministic tool execution.
 
-The router's Haiku classifier already decided the sub-type:
-    troubleshooting_withdrawal  → employee_data + attendance
-    troubleshooting_attendance  → employee_data (paycycle) + attendance
-    troubleshooting_account     → employee_data only
-    troubleshooting_deduction   → employee_data only (deduction focus)
+Only `troubleshooting_withdrawal` reaches this planner; the other
+troubleshooting_* labels (signup, cant_find_company, money_not_arrived,
+cant_receive_otp) are handled by the FAQ pipeline because their answers
+live in the FAQ catalog and don't need a live API lookup.
 
 Tools are called in a fixed order based on sub-type — no ReAct agent needed.
 evidence.py then determines root_cause and picks the answer template.
@@ -22,12 +21,17 @@ from agent.evidence import (
 
 _logger = logging.getLogger("agent.planner")
 
-# Sub-type → which tools to call (in order)
+# Sub-type → which tools to call (in order).
+# Today only `withdrawal` reaches the planner with active tools. Other
+# troubleshooting_* labels are routed to FAQ first in pipeline/router.py;
+# they're kept here as placeholders (empty = no-op) so that adding API
+# escalation later is one line per subtype without redesigning the planner.
 _TOOL_STRATEGY: dict[str, list[str]] = {
-    "troubleshooting_withdrawal": ["get_employee_data", "get_attendance"],
-    "troubleshooting_attendance": ["get_employee_data", "get_attendance"],
-    "troubleshooting_account":    ["get_employee_data"],
-    "troubleshooting_deduction":  ["get_employee_data"],
+    "troubleshooting_withdrawal":        ["get_employee_data", "get_attendance"],
+    "troubleshooting_signup":            [],   # FAQ first; escalate later if needed
+    "troubleshooting_cant_find_company": [],   # FAQ first; escalate later if needed
+    "troubleshooting_money_not_arrived": [],   # FAQ first; escalate later if needed
+    "troubleshooting_cant_receive_otp":  [],   # FAQ only — no API ever
 }
 _DEFAULT_STRATEGY = ["get_employee_data", "get_attendance"]
 

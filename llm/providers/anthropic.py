@@ -38,6 +38,7 @@ class AnthropicProvider(BaseLLMProvider):
         messages: list[dict],
         system: str = "",
         max_tokens: int = 1024,
+        json_mode: bool = False,
     ) -> LLMResponse:
         """Call Claude via Anthropic SDK with retry on rate limits."""
         kwargs = dict(

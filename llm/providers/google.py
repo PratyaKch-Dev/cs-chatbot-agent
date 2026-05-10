@@ -42,6 +42,7 @@ class GoogleProvider(BaseLLMProvider):
         messages: list[dict],
         system: str = "",
         max_tokens: int = 1024,
+        json_mode: bool = False,
     ) -> LLMResponse:
         """
         Call Gemini via google-generativeai SDK.
@@ -59,7 +60,12 @@ class GoogleProvider(BaseLLMProvider):
         # Last message must be the user turn we're replying to
         last_msg = messages[-1]["content"] if messages else ""
 
-        generation_config = {"max_output_tokens": max_tokens}
+        # Gemini 2.5 Flash is a thinking model: thinking tokens count against max_output_tokens.
+        # Callers must pass a budget large enough to cover thinking (~400-600 tokens) + response.
+        # Router uses max_tokens=512 (thinking ~450 + JSON ~30), summarizer uses 1024, etc.
+        generation_config: dict = {"max_output_tokens": max_tokens}
+        if json_mode:
+            generation_config["response_mime_type"] = "application/json"
 
         model_kwargs: dict = {"generation_config": generation_config}
         if system:

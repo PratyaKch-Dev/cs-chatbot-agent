@@ -30,7 +30,7 @@ Shape — Troubleshooting:
   "updated_at":       "2026-04-20T10:35:00+07:00"
 }
 
-status values: active | resolved | stale
+status values: active | awaiting_confirmation | escalated | resolved | stale
 """
 
 import json
@@ -80,8 +80,18 @@ def save_troubleshooting_context(
     sub_type: str = "",
     status: str = "active",
 ) -> None:
-    """Save or overwrite active troubleshooting context."""
-    _save(tenant_id, user_id, {
+    """
+    Save or update active troubleshooting context. Preserves accumulator
+    fields (retry_count, handoff_reason) when the same troubleshooting topic
+    is continued — otherwise the recheck-before-handoff loop loses its
+    counter every time _run_troubleshooting_recheck calls this.
+    """
+    existing = load(tenant_id, user_id) or {}
+    same_topic = (
+        existing.get("intent") == "troubleshooting"
+        and existing.get("sub_type") == sub_type
+    )
+    new_ctx = {
         "intent":          "troubleshooting",
         "topic":           topic,
         "sub_type":        sub_type,
@@ -90,7 +100,13 @@ def save_troubleshooting_context(
         "last_root_cause": last_root_cause,
         "status":          status,
         "updated_at":      _now(),
-    }, ttl=TROUBLESHOOTING_CONTEXT_TTL_SECONDS)
+    }
+    if same_topic:
+        # Preserve counters / handoff metadata across rechecks on the same topic.
+        for k in ("retry_count", "handoff_reason"):
+            if k in existing:
+                new_ctx[k] = existing[k]
+    _save(tenant_id, user_id, new_ctx, ttl=TROUBLESHOOTING_CONTEXT_TTL_SECONDS)
 
 
 def update_remark(tenant_id: str, user_id: str, remark: str) -> None:
@@ -107,7 +123,7 @@ def update_remark(tenant_id: str, user_id: str, remark: str) -> None:
 
 
 def set_status(tenant_id: str, user_id: str, status: str) -> None:
-    """Update status field (active / resolved / stale)."""
+    """Update status field (active / awaiting_confirmation / escalated / resolved / stale)."""
     ctx = load(tenant_id, user_id)
     if ctx is None:
         return
@@ -117,6 +133,38 @@ def set_status(tenant_id: str, user_id: str, status: str) -> None:
            if ctx.get("intent") == "faq"
            else TROUBLESHOOTING_CONTEXT_TTL_SECONDS)
     _save(tenant_id, user_id, ctx, ttl=ttl)
+
+
+def patch(tenant_id: str, user_id: str, **fields) -> None:
+    """
+    Merge arbitrary fields into existing active context.
+    Automatically stamps updated_at. No-op if no context exists.
+    TTL is preserved from the existing intent type.
+    """
+    ctx = load(tenant_id, user_id)
+    if ctx is None:
+        return
+    ctx.update(fields)
+    ctx["updated_at"] = _now()
+    ttl = (FAQ_CONTEXT_TTL_SECONDS
+           if ctx.get("intent") == "faq"
+           else TROUBLESHOOTING_CONTEXT_TTL_SECONDS)
+    _save(tenant_id, user_id, ctx, ttl=ttl)
+
+
+def save_awaiting_confirmation(tenant_id: str, user_id: str) -> None:
+    """Mark context as awaiting_confirmation (bot sent the confirmation prompt)."""
+    patch(tenant_id, user_id, status="awaiting_confirmation")
+
+
+def mark_resolved(tenant_id: str, user_id: str) -> None:
+    """Mark context as resolved (user confirmed the answer helped)."""
+    patch(tenant_id, user_id, status="resolved")
+
+
+def mark_escalated(tenant_id: str, user_id: str) -> None:
+    """Mark context as escalated (handed off to CS)."""
+    patch(tenant_id, user_id, status="escalated")
 
 
 # ── Load ──────────────────────────────────────────────────────────────────────

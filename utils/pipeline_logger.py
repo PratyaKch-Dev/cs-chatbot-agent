@@ -85,6 +85,9 @@ class PipelineTrace:
     route: str = ""
     route_reason: str = ""
     route_label: str = ""   # LLM-returned label e.g. "greeting", "troubleshooting_withdrawal"
+    is_new: bool = True     # from router decision
+    resolver_action: str = ""   # e.g. "new", "end_flow"
+    resolver_reason: str = ""   # e.g. "active_context_let_llm_decide"
     query_cleaned: str = ""
     collection: str = ""
     hits: list[RetrievalHit] = field(default_factory=list)
@@ -98,10 +101,15 @@ class PipelineTrace:
 
     _start: float = field(default_factory=time.time, repr=False)
 
-    def set_route(self, route: str, reason: str, label: str = "") -> None:
+    def set_resolver(self, action: str, reason: str) -> None:
+        self.resolver_action = action
+        self.resolver_reason = reason
+
+    def set_route(self, route: str, reason: str, label: str = "", is_new: bool = True) -> None:
         self.route = route
         self.route_reason = reason
         self.route_label = label
+        self.is_new = is_new
 
     def set_retrieval(self, query_used: str, collection: str, documents: list) -> None:
         self.query_cleaned = query_used
@@ -185,20 +193,48 @@ def _write_readable(t: PipelineTrace) -> None:
         role = "U" if msg["role"] == "user" else "B"
         lines.append(f"          [{role}] {msg['content'].replace(chr(10), ' ')}")
     if smry:
-        lines.append(f"          [summary] {smry.replace(chr(10), ' ')}")
+        smry_flat = smry.strip().replace("\n", " ")
+        # wrap at 90 chars per line for readability
+        prefix = "          [summary] "
+        rest   = "                     "
+        words  = smry_flat.split()
+        line_buf, smry_lines = [], []
+        col = len(prefix)
+        for w in words:
+            if col + len(w) + 1 > 90 and line_buf:
+                smry_lines.append(" ".join(line_buf))
+                line_buf, col = [], len(rest)
+            line_buf.append(w)
+            col += len(w) + 1
+        if line_buf:
+            smry_lines.append(" ".join(line_buf))
+        lines.append(f"{prefix}{smry_lines[0]}")
+        for sl in smry_lines[1:]:
+            lines.append(f"{rest}{sl}")
     else:
         lines.append("          [summary] none")
     lines.append("")
 
+    # ── RESOLVER ──────────────────────────────────────────────────────────────
+    if t.resolver_action:
+        lines.append(f"  RESOLVER  {t.resolver_action}  ({t.resolver_reason})")
+        lines.append("")
+
     # ── ROUTER LLM ────────────────────────────────────────────────────────────
-    r_tok = f"  in={router_call['in']} out={router_call['out']}" if router_call else ""
-    r_ms  = f"  {router_call['ms']:.0f}ms" if router_call else ""
-    lines.append(f"  ROUTE   {route_label}{r_ms}{r_tok}")
+    r_tok      = f"  in={router_call['in']} out={router_call['out']}" if router_call else ""
+    r_ms       = f"  {router_call['ms']:.0f}ms" if router_call else ""
+    is_new_tag = "followup" if not t.is_new else "new"
+    label_tag  = f"  label={t.route_label}" if t.route_label else ""
+    lines.append(f"  ROUTE   {route_label}  [{is_new_tag}]{label_tag}{r_ms}{r_tok}")
     if router_call:
-        # system prompt
-        sys_text = (router_call.get("system") or "").strip()
-        for line in sys_text.splitlines():
+        # system prompt — show only first 5 lines to keep trace compact
+        sys_lines = (router_call.get("system") or "").strip().splitlines()
+        shown     = sys_lines[:5]
+        hidden    = len(sys_lines) - len(shown)
+        for line in shown:
             lines.append(f"  [SYS]   {line}")
+        if hidden > 0:
+            lines.append(f"  [SYS]   ... ({hidden} more lines)")
         lines.append("")
         # → sent (the combined user content: summary + history + active_ctx + message)
         sent = (router_call.get("prompt") or "").strip()
@@ -236,10 +272,14 @@ def _write_readable(t: PipelineTrace) -> None:
     escalated = "  *** ESCALATED ***" if t.was_escalated else ""
     lines.append(f"  ANSWER{a_ms}{a_tok}   grounding {score_bar} {t.grounding_score:.2f}{escalated}")
     if answer_call:
-        # system prompt
-        sys_text = (answer_call.get("system") or "").strip()
-        for line in sys_text.splitlines():
+        # system prompt — show only first 5 lines
+        sys_lines = (answer_call.get("system") or "").strip().splitlines()
+        shown     = sys_lines[:5]
+        hidden    = len(sys_lines) - len(shown)
+        for line in shown:
             lines.append(f"  [SYS]   {line}")
+        if hidden > 0:
+            lines.append(f"  [SYS]   ... ({hidden} more lines)")
         lines.append("")
         # → sent: history + context/question
         for msg in (answer_call.get("history_msgs") or []):

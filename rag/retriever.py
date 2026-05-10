@@ -71,12 +71,31 @@ def retrieve(
     vector = embed_query(cleaned)
 
     client = _get_client()
-    hits = client.search(
-        collection_name=collection,
-        query_vector=vector,
-        limit=VECTOR_SEARCH_TOP_K,
-        with_payload=True,
-    )
+    try:
+        hits = client.search(
+            collection_name=collection,
+            query_vector=vector,
+            limit=VECTOR_SEARCH_TOP_K,
+            with_payload=True,
+        )
+    except Exception as e:
+        # Language collection missing → fall back to Thai (multilingual embeddings work cross-language)
+        fallback = _get_collection_name(tenant_id, "th")
+        if language != "th" and fallback != collection:
+            logging.warning(
+                f"[retriever] collection {collection!r} not found ({e}), "
+                f"falling back to {fallback!r}"
+            )
+            collection = fallback
+            hits = client.search(
+                collection_name=collection,
+                query_vector=vector,
+                limit=VECTOR_SEARCH_TOP_K,
+                with_payload=True,
+            )
+        else:
+            logging.warning(f"[retriever] search failed for {collection!r}: {e}")
+            return RetrievalResult(documents=[], query_used=cleaned, collection=collection)
 
     if not hits:
         return RetrievalResult(documents=[], query_used=cleaned, collection=collection)
@@ -132,6 +151,30 @@ def build_context(documents: list[RetrievedDocument], language: str) -> str:
     return "\n\n".join(parts)
 
 
+_TENANTS_CONFIG = os.path.join(os.path.dirname(__file__), "..", "config", "tenants.yaml")
+_tenants_cache: dict | None = None
+
+
+def _load_tenants() -> dict:
+    """Load tenants.yaml once and cache."""
+    global _tenants_cache
+    if _tenants_cache is None:
+        try:
+            import yaml
+            with open(_TENANTS_CONFIG, encoding="utf-8") as f:
+                _tenants_cache = (yaml.safe_load(f) or {}).get("tenants", {})
+        except Exception as e:
+            logging.warning(f"[retriever] failed to load tenants.yaml: {e}")
+            _tenants_cache = {}
+    return _tenants_cache
+
+
 def _get_collection_name(tenant_id: str, language: str) -> str:
-    """Returns Qdrant collection name: {company_id}_{language}"""
-    return f"{tenant_id}_{language}"
+    """
+    Resolve Qdrant collection name from tenants.yaml `vector_collections`.
+    Falls back to `{tenant_id}_{language}` if not configured.
+    """
+    tenants = _load_tenants()
+    cfg = tenants.get(tenant_id, {})
+    collections = cfg.get("vector_collections", {})
+    return collections.get(language) or f"{tenant_id}_{language}"

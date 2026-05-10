@@ -27,6 +27,7 @@ class BaseLLMProvider(ABC):
         messages: list[dict],
         system: str = "",
         max_tokens: int = 1024,
+        json_mode: bool = False,
     ) -> LLMResponse:
         """
         Send a chat-style request and return the response.

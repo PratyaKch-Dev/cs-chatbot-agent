@@ -27,6 +27,7 @@ class OpenAIProvider(BaseLLMProvider):
         messages: list[dict],
         system: str = "",
         max_tokens: int = 1024,
+        json_mode: bool = False,
     ) -> LLMResponse:
         """
         TODO Phase 8: implement using openai SDK.

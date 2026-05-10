@@ -1,0 +1,344 @@
+text,label
+เออ,missing_info
+ยอด0 บาท,troubleshooting_withdrawal
+ขอบคุณมากนะคะ,chitchat_thanks
+ไม่ได้รับเงินที่เบิก,faq
+help me,missing_info
+see you later,chitchat_goodbye
+เงินหายไป,troubleshooting_money_not_arrived
+วิธีเปลี่ยนรหัสผ่าน,faq
+สวัสดีตอนเย็น,chitchat_greeting
+วิธีเปลี่ยนรหัสผ่าน,faq
+ลงทะเบียนไม่สำเร็จ,troubleshooting_signup
+เบิกไม่ผ่านสักที,troubleshooting_withdrawal
+เปลี่ยนเบอร์ด้วย Microsoft,faq
+สมัครไม่สำเร็จ,troubleshooting_signup
+many thanks,chitchat_thanks
+หน่วยงานยังไม่เปิดให้บริการ,faq
+เบิกไม่ได้ทำไม,troubleshooting_withdrawal
+สแกนหน้าบน ZeeMe ไม่ได้,faq
+น่าเบื่อมาก,chitchat_frustrated
+ช่วยด้วยนะครับ,missing_info
+hi there,chitchat_greeting
+ttyl,chitchat_goodbye
+hello ครับ,chitchat_greeting
+can't sign up,troubleshooting_signup
+เบิกเงินไม่ผ่าน,troubleshooting_withdrawal
+เข้าสู่ระบบ People care ไม่ได้,faq
+ทำความเข้าใจไม่ได้,chitchat_confused
+งงเลย,chitchat_confused
+ไม่พบข้อมูลผู้ใช้บนระบบ,faq
+วิธีค้นหาบริษัทของคุณ,faq
+sign up failed,troubleshooting_signup
+issue,missing_info
+กรณีแจ้งลาออกมาก่อนหน้า,faq
+สมัครแอปไม่ได้,troubleshooting_signup
+funds not received,troubleshooting_money_not_arrived
+ขอบคุณมากเลย,chitchat_thanks
+ขอบคุณนะ,chitchat_thanks
+ขอบคุณมากๆ,chitchat_thanks
+balance is 0,troubleshooting_withdrawal
+ยอดแสดง 0 บาท,troubleshooting_withdrawal
+ty,chitchat_thanks
+เงื่อนไขอื่น ๆ สำหรับพนักงาน PCS,faq
+ช่วยดูให้ที,missing_info
+good bye,chitchat_goodbye
+don't understand,chitchat_confused
+สแกนเข้า-ออกงานแต่ไม่มียอดเงินอัปเดต,faq
+วิธีเปลี่ยนบัญชีธนาคารที่รับเงิน,faq
+หาชื่อบริษัทไม่เจอ,troubleshooting_cant_find_company
+company not showing up,troubleshooting_cant_find_company
+ยังไม่เห็นเงินในบัญชี,troubleshooting_money_not_arrived
+ลงทะเบียนไม่ได้,troubleshooting_signup
+กดเบิกแล้วมันไม่ผ่าน,troubleshooting_withdrawal
+บริษัทลงทะเบียนแล้วแต่หาชื่อไม่พบ,faq
+so slow,chitchat_frustrated
+ยอดไม่ขึ้น,troubleshooting_withdrawal
+เหนื่อยมาก,chitchat_frustrated
+สวัสดีนะคะ,chitchat_greeting
+เปลี่ยนเบอร์ด้วย Line,faq
+ขอตัวก่อนค่ะ,chitchat_goodbye
+ฮัลโหล,chitchat_greeting
+awful,chitchat_frustrated
+ช่วยอธิบายหน่อย,chitchat_confused
+ไปก่อนค่ะ,chitchat_goodbye
+เงินไม่มาสักที,troubleshooting_money_not_arrived
+ทดสอบไม่ผ่านสักที,chitchat_frustrated
+เงินยังไม่โอน,troubleshooting_money_not_arrived
+แปลว่าอะไร,chitchat_confused
+หวัดดีนะ,chitchat_greeting
+งงงงง,chitchat_confused
+ทำไมต้องยากขนาดนี้,chitchat_frustrated
+ไม่ไหวแล้ว,chitchat_frustrated
+goodbye,chitchat_goodbye
+cannot register,troubleshooting_signup
+confused,chitchat_confused
+ผูกบัญชีธนาคารไม่สำเร็จ,faq
+รอเงินนานมาก,troubleshooting_money_not_arrived
+can't create account,troubleshooting_signup
+company not found,troubleshooting_cant_find_company
+หน่วยงานยังไม่เปิดให้บริการ,faq
+money not in account,troubleshooting_money_not_arrived
+register ไม่ได้,troubleshooting_signup
+สมัครใช้งานไม่ได้,troubleshooting_signup
+รำคาญมากเลย,chitchat_frustrated
+worst app ever,chitchat_frustrated
+วิธีเบิกค่าจ้างล่วงหน้า,faq
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+thank you,chitchat_thanks
+problem,missing_info
+สวัสดีตอนบ่าย,chitchat_greeting
+transfer not arrived,troubleshooting_money_not_arrived
+ยอดเป็น 0,troubleshooting_withdrawal
+เงื่อนไขเป็นไปตามที่บริษัทกำหนด,faq
+ไม่ได้รับรหัส OTP,faq
+สวัสดีตอนเช้า,chitchat_greeting
+ใช้ไม่ได้เลย,chitchat_frustrated
+บาย,chitchat_goodbye
+not working at all,chitchat_frustrated
+อายุงานยังไม่ครบ 30 วัน,faq
+zero balance,troubleshooting_withdrawal
+ขอบคุณที่แจ้ง,chitchat_thanks
+ห่วยมาก,chitchat_frustrated
+ช่วยดูหน่อย,missing_info
+money not received,troubleshooting_money_not_arrived
+เฮ้,chitchat_greeting
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+this app is broken,chitchat_frustrated
+หาบริษัทไม่ได้เลย,troubleshooting_cant_find_company
+this is so frustrating,chitchat_frustrated
+ขอบคุณมาก,chitchat_thanks
+บายๆ,chitchat_goodbye
+เบิกเงินไม่ผ่านเลย,troubleshooting_withdrawal
+take care,chitchat_goodbye
+ไม่พบข้อมูลผู้ใช้บนระบบ,faq
+withdrawal processed but no money,troubleshooting_money_not_arrived
+ตรวจสอบหน่อย,missing_info
+bye,chitchat_goodbye
+วิธีเบิกค่าจ้างล่วงหน้า,faq
+แล้วเจอกันใหม่,chitchat_goodbye
+บ้าอะไร,chitchat_frustrated
+my company is not in the list,troubleshooting_cant_find_company
+มีปัญหา,missing_info
+ไปก่อนครับ,chitchat_goodbye
+อรุณสวัสดิ์ครับ,chitchat_greeting
+account creation failed,troubleshooting_signup
+เงื่อนไขกรณีลาไม่รับค่าจ้าง,faq
+ยอด 0,troubleshooting_withdrawal
+เปลี่ยนเบอร์ด้วย Line,faq
+ดูให้ทีนะ,missing_info
+อ่านแล้วยังงง,chitchat_confused
+ไม่พบข้อมูลในบริษัทของคุณ,faq
+good evening,chitchat_greeting
+สวัสดีค่ะ,chitchat_greeting
+วิธีเบิกค่าจ้างล่วงหน้า,faq
+ลาก่อนค่ะ,chitchat_goodbye
+ดีครับ,chitchat_greeting
+ทำไมถึงเป็นแบบนี้,chitchat_frustrated
+ลงทะเบียนด้วยเลขบัตรประชาชนและเบอร์โทรศัพท์,faq
+สัญชาติของพนักงาน,faq
+โอนเงินแล้วยังไม่ได้รับ,troubleshooting_money_not_arrived
+ขอบคุณ,chitchat_thanks
+ทำไมนะ,chitchat_confused
+ไม่ค่อยเข้าใจ,chitchat_confused
+ลงทะเบียนด้วย IFS Smart TA,faq
+ยังเบิกไม่ได้เลย,troubleshooting_withdrawal
+รอเงินอยู่แต่ยังไม่ได้,troubleshooting_money_not_arrived
+ตรวจสอบเงื่อนไขการถูกระงับใช้งาน,faq
+ไม่ได้รับคูปองชวนเพื่อน,faq
+ไม่มียอดเบิก,troubleshooting_withdrawal
+ขอบคุณครับผม,chitchat_thanks
+สมัครสมาชิกไม่ได้,troubleshooting_signup
+สมัครแล้วมันขึ้นว่าไม่สำเร็จ,troubleshooting_signup
+เงื่อนไขถูกระงับการใช้งาน,faq
+thanks,chitchat_thanks
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+คืออะไร,chitchat_confused
+แก้ไขหน่อย,missing_info
+ขอบคุณค่ะ,chitchat_thanks
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+good afternoon,chitchat_greeting
+i'm confused,chitchat_confused
+howdy,chitchat_greeting
+hey there,chitchat_greeting
+help,missing_info
+เหรอ,missing_info
+hello,chitchat_greeting
+แล้วเจอกัน,chitchat_goodbye
+ขอตัวก่อนนะ,chitchat_goodbye
+can't find company name,troubleshooting_cant_find_company
+สมัครไม่ได้,troubleshooting_signup
+ดีจ้า,chitchat_greeting
+กรณีไม่ชำระคืน,faq
+เดี๋ยวว่าใหม่นะ,chitchat_goodbye
+ต้องการความช่วยเหลือ,missing_info
+บริษัทไม่อยู่ในระบบ,troubleshooting_cant_find_company
+registration failed,troubleshooting_signup
+ลงทะเบียนด้วย ZeeMe,faq
+ขอบคุณที่ให้ข้อมูล,chitchat_thanks
+ทำไมมันช้าแบบนี้,chitchat_frustrated
+บริษัทหายไป,troubleshooting_cant_find_company
+ขอบพระคุณครับ,chitchat_thanks
+ช่วยด้วยค่ะ,missing_info
+ยอดเงินไม่ถึงขั้นต่ำ / เบิกขั้นต่ำ 800 บาท,faq
+อืม,missing_info
+cya,chitchat_goodbye
+บริษัทไม่ขึ้น,troubleshooting_cant_find_company
+hi ค่ะ,chitchat_greeting
+please explain,chitchat_confused
+thanks a lot,chitchat_thanks
+what does this mean,chitchat_confused
+กรอกชื่อบริษัทแล้วไม่เจอ,troubleshooting_cant_find_company
+บริษัทไม่ขึ้นมาเลย,troubleshooting_cant_find_company
+สมัครไม่ผ่าน,troubleshooting_signup
+สวัสดีครับ,chitchat_greeting
+ระยะเวลาเคลม,faq
+ค้นหาบริษัทไม่เจอ,troubleshooting_cant_find_company
+อายุงานยังไม่ครบ 90 วัน,faq
+bye bye,chitchat_goodbye
+ไม่เจอบริษัทตัวเอง,troubleshooting_cant_find_company
+สิทธิ์การเบิกเคลมสำหรับช่วงทดลองงาน,faq
+เบิกแล้วแต่เงินยังไม่เข้า,troubleshooting_money_not_arrived
+เบิกเงินได้แค่บางส่วน,troubleshooting_withdrawal
+โอเค บาย,chitchat_goodbye
+เบิกไม่ผ่านครับ,troubleshooting_withdrawal
+เงินยังไม่เข้า,troubleshooting_money_not_arrived
+ลงทะเบียนไม่ผ่าน,troubleshooting_signup
+เฮ้โล,chitchat_greeting
+can't withdraw,troubleshooting_withdrawal
+สร้างบัญชีไม่ได้,troubleshooting_signup
+หวัดดีครับ,chitchat_greeting
+ไม่ได้,missing_info
+ไปก่อนนะ,chitchat_goodbye
+อายุงานยังไม่ครบ 60 วัน,faq
+แอป ZeeMe ค้าง,faq
+สมัครไม่ได้เลยสักที,troubleshooting_signup
+so annoying,chitchat_frustrated
+วิธีเช็คประวัติการเบิกย้อนหลัง,faq
+รอเงินมานานแล้ว,troubleshooting_money_not_arrived
+ขอความช่วยเหลือ,missing_info
+money still not credited,troubleshooting_money_not_arrived
+หาบริษัทบน ZeeMe ไม่พบ,faq
+เปิดบัญชีไม่ได้,troubleshooting_signup
+ยอดเงินติดลบ,faq
+โอ้โห,missing_info
+ขอบคุณที่ช่วย,chitchat_thanks
+สแกนเข้า-ออกงานแต่ไม่มียอดเงินอัปเดต,faq
+หาบริษัทไม่เจอ,troubleshooting_cant_find_company
+เงื่อนไขการหักเงินคืน,faq
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+can you explain,chitchat_confused
+not sure what this means,chitchat_confused
+ยังไม่ได้รับเงิน,troubleshooting_money_not_arrived
+ลาก่อน,chitchat_goodbye
+ทำไมแอปมันห่วยแบบนี้,chitchat_frustrated
+why is this so hard,chitchat_frustrated
+ไม่มีบริษัทของฉัน,troubleshooting_cant_find_company
+ลืมรหัสผ่าน Zeeme,faq
+แย่จริงๆ,chitchat_frustrated
+something wrong,missing_info
+not eligible to withdraw,troubleshooting_withdrawal
+เงินไม่เข้าบัญชี,troubleshooting_money_not_arrived
+เงินยังไม่โอนมา,troubleshooting_money_not_arrived
+มีปัญหานะ,missing_info
+withdrawal failed,troubleshooting_withdrawal
+อายุงานยังไม่ครบ 45 วัน,faq
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+โอเคบาย,chitchat_goodbye
+แอปค้าง,faq
+ลงทะเบียนด้วย DailyWork,faq
+อ้าว,missing_info
+company disappeared,troubleshooting_cant_find_company
+ค้นชื่อบริษัทไม่เจอ,troubleshooting_cant_find_company
+สแกนเข้า-ออกงานแต่ไม่มียอดเงินอัปเดต,faq
+i don't get it,chitchat_confused
+เบิกไม่ได้เลย,troubleshooting_withdrawal
+transaction successful but money missing,troubleshooting_money_not_arrived
+เงินเข้าช้า,troubleshooting_money_not_arrived
+หัวร้อน,chitchat_frustrated
+ขอบคุณครับ,chitchat_thanks
+ช่วยด้วย,missing_info
+ทำไมสมัครไม่ได้,troubleshooting_signup
+อ่ะ,missing_info
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+อธิบายได้ไหม,chitchat_confused
+ดีๆ,chitchat_greeting
+เบิกเงินไม่ได้,troubleshooting_withdrawal
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+ช่วยหน่อย,missing_info
+ลงทะเบียนด้วย PeopleCare,faq
+ค้นหาบริษัทไม่ได้,troubleshooting_cant_find_company
+ไม่พบข้อมูลผู้ใช้บนระบบ,faq
+อายุงานยังไม่ครบ 7 วัน,faq
+หัวร้อนมาก,chitchat_frustrated
+ขอบใจมาก,chitchat_thanks
+สับสนนิดนึง,chitchat_confused
+โกรธมากเลย,chitchat_frustrated
+ยอดเงินเป็น 0 บาท,troubleshooting_withdrawal
+balance showing 0,troubleshooting_withdrawal
+แย่มากเลย,chitchat_frustrated
+withdrawal not working,troubleshooting_withdrawal
+company not in system,troubleshooting_cant_find_company
+วิธีชวนเพื่อนมาใช้ Salary Hero,faq
+ยอดเงินคงเหลือเป็น 0,faq
+ขอบพระคุณค่ะ,chitchat_thanks
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+เข้าสู่ระบบ ZeeMe ไม่ได้,faq
+need help,missing_info
+ไม่เข้าใจเลย,chitchat_confused
+โอ้โห สวัสดี,chitchat_greeting
+ขอบใจ,chitchat_thanks
+this is terrible,chitchat_frustrated
+cannot withdraw,troubleshooting_withdrawal
+not working,missing_info
+คำขอโดนปฏิเสธ,faq
+ขอบคุณที่ตอบ,chitchat_thanks
+เบิกไม่ได้ค่ะ,troubleshooting_withdrawal
+แล้วกัน,chitchat_goodbye
+กรณีแจ้งลาออกมาก่อนหน้า,faq
+company missing from app,troubleshooting_cant_find_company
+สวัสดีๆ,chitchat_greeting
+ขอความกระจ่างหน่อย,chitchat_confused
+ทำไมเบิกเงินไม่ได้,troubleshooting_withdrawal
+ยอดเงินหาย,troubleshooting_withdrawal
+thx,chitchat_thanks
+ยอดหาย,troubleshooting_withdrawal
+ไม่สามารถชำระคืนได้,faq
+ไม่พบแบนเนอร์ Salary Hero บน IFS Smart TA,faq
+ยอดแสดงเป็น 0,troubleshooting_withdrawal
+ทนไม่ไหวแล้ว,chitchat_frustrated
+ขอตัวก่อนครับ,chitchat_goodbye
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+เงินไม่ขึ้น,troubleshooting_withdrawal
+สแกนเข้า-ออกงานแต่ไม่มียอดเงินอัปเดต,faq
+โอเค แล้วกัน,chitchat_goodbye
+หวัดดีค่ะ,chitchat_greeting
+ใช้ไม่ได้,missing_info
+อายุงานยังไม่ครบ 119 วัน,faq
+can't find my company,troubleshooting_cant_find_company
+งงมาก,chitchat_confused
+signup not working,troubleshooting_signup
+ไม่พบแบบฟอร์มให้ความยินยอมบน People Care,faq
+i'm so frustrated,chitchat_frustrated
+เงื่อนไขการเบิกค่าจ้างล่วงหน้า,faq
+hi,chitchat_greeting
+ไม่มีเลขที่บัญชีรับเงิน,faq
+เงินยังไม่ถึง,troubleshooting_money_not_arrived
+หมายความว่าอะไร,chitchat_confused
+ไม่เข้าใจ,chitchat_confused
+appreciate it,chitchat_thanks
+hey,chitchat_greeting
+good morning,chitchat_greeting
+ยืนยันตัวตนไม่ผ่าน,troubleshooting_signup
+อายุงานยังไม่ครบ 30 วัน,faq
+thank you so much,chitchat_thanks
+ขนาดตัวอักษรผิดปกติ / มองไม่เห็นปุ่มกดหรือตัวหนังสือ,faq
+ขอบคุณสำหรับข้อมูล,chitchat_thanks
+see you,chitchat_goodbye
+งงหน่อย,chitchat_confused
+what do you mean,chitchat_confused
+ปัญหา,missing_info
+ทักทายหน่อย,chitchat_greeting
+ลาก่อนครับ,chitchat_goodbye
+สถานะไม่ผ่านเงื่อนไขการใช้งาน,faq

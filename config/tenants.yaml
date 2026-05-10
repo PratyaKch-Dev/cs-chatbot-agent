@@ -4,7 +4,7 @@
 tenants:
   hns:
     name: "HNS Company"
-    company_id: "hns"
+    company_id: "happy_nest_space"   # matches company_id in solutions_faq.csv
     language_default: "th"
     languages_supported:
       - th
@@ -12,12 +12,14 @@ tenants:
     line_channel_access_token: "${HNS_LINE_CHANNEL_ACCESS_TOKEN}"
     line_channel_secret: "${HNS_LINE_CHANNEL_SECRET}"
     vector_collections:
-      th: "hns_th"
-      en: "hns_en"
+      th: "happy_nest_space_th"
+      en: "happy_nest_space_en"
     features:
       withdrawal_diagnosis: true
       troubleshooting_agent: true
       human_handoff: true
+    excluded_source_types:
+      - feature_flexben
     handoff:
       method: "line_transfer"       # line_transfer | webhook | email
       contact_info: "HR Department"
@@ -37,3 +39,4 @@ tenants:
   #     withdrawal_diagnosis: true
   #     troubleshooting_agent: false
   #     human_handoff: true
+  #   excluded_source_types: []   # e.g. ["feature_flexben"] to hide articles for missing features
