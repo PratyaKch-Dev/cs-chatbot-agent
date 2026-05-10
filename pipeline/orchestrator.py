@@ -34,8 +34,10 @@ from memory.context_cache import (
     save_faq_context, save_diagnostic_context,
     load_faq_context, load_context, clear_context,
 )
+from memory.pending_image import load_pending_image, clear_pending_image
 from memory.summarizer import load_summary, clear_summary, update_rolling_summary_async
 import memory.active_context as ac
+from llm.templates import IMAGE_CAPTION_PREFIX
 
 _logger = logging.getLogger("pipeline.orchestrator")
 
@@ -80,11 +82,30 @@ def _build_system_with_summary(base_system: str, summary: str) -> str:
     )
 
 
+def _prepend_image_situation(context: str, image_situation: str, language: str) -> str:
+    """
+    Prepend image-derived situation to retrieval context so the LLM treats it
+    as authoritative grounding alongside the retrieved FAQ docs.
+    """
+    if language == "th":
+        label = (
+            "[สถานการณ์เฉพาะของผู้ใช้จากภาพหน้าจอที่แนบมา — ใช้เป็นข้อมูลหลักในการตอบ]"
+        )
+    else:
+        label = (
+            "[User's specific situation shown in the attached screenshot "
+            "— treat as primary grounding for the answer]"
+        )
+    block = f"{label}\n{image_situation}\n\n"
+    return block + context if context else block
+
+
 def handle_message(
     tenant_id: str,
     user_id: str,
     message: str,
     employee_id: str = "",
+    access_token: str = "",
     return_trace: bool = False,
 ) -> MessageResult:
     """
@@ -92,16 +113,38 @@ def handle_message(
 
     Args:
         tenant_id:    Company namespace (e.g. "hns")
-        user_id:      LINE user ID (webhook) or employee ID (Gradio testing)
+        user_id:      LINE user ID (webhook) or display ID (Gradio testing)
         message:      Raw user message text
-        employee_id:  Employee ID for troubleshooting API calls.
-                      Falls back to user_id if not provided.
+        employee_id:  Override employee ID (optional — mainly for testing).
+        access_token: Token from mobile app. Mock phase: pass employee_id string
+                      (e.g. "EMP001"). Real phase: Salary Hero Bearer token;
+                      BE derives the user from it — chatbot never trusts emp_id directly.
         return_trace: Whether to include pipeline trace in result.
     """
     if not message.strip():
         return MessageResult(answer="")
 
-    emp_id   = employee_id or user_id
+    # If a pending image is waiting (user sent an image alone in a previous turn
+    # and was asked a clarifying question), prepend it now so the pipeline has
+    # full context for this reply. Skip if the current message is itself an image
+    # caption (orchestrator was called on the image-only path directly).
+    image_situation = ""
+    if not message.startswith(IMAGE_CAPTION_PREFIX):
+        pending_image = load_pending_image(tenant_id, user_id)
+        if pending_image:
+            user_reply = message
+            image_situation = pending_image
+            message = f"{IMAGE_CAPTION_PREFIX}{pending_image}\nคำถาม: {user_reply}"
+            clear_pending_image(tenant_id, user_id)
+            logging.getLogger("image_flow").info(
+                f"[image-flow] COMBINED pending image with reply for {tenant_id}/{user_id} "
+                f"| user_reply={user_reply!r} | image={len(pending_image)} chars"
+            )
+
+    # Mock phase: access_token = employee_id string (e.g. "EMP001").
+    # Real phase: access_token = Bearer token; BE derives employee from it.
+    emp_id = employee_id or access_token or user_id
+
     language = detect_language(message)
     trace    = PipelineTrace(tenant_id=tenant_id, query=message, language=language)
 
@@ -130,6 +173,7 @@ def handle_message(
         recent_history=redis_history,
         active_context=active_ctx_str,
         summary=summary,
+        image_situation=image_situation,
     )
 
     # ── Path execution ─────────────────────────────────────────────────────────
@@ -150,12 +194,14 @@ def handle_message(
         answer = _run_troubleshooting_recheck(
             message, language, tenant_id, user_id, emp_id,
             active_ctx, decision, redis_history, summary, trace,
+            access_token=access_token,
         )
 
     elif decision.conv_state == "followup" and decision.followup_type == "faq_followup":
         answer = _run_faq_followup(
             message, language, tenant_id, user_id,
             active_ctx, decision, redis_history, summary, trace,
+            image_situation=image_situation,
         )
 
     elif decision.route == Route.CHITCHAT:
@@ -180,12 +226,14 @@ def handle_message(
         answer = _run_troubleshooting_new(
             message, language, tenant_id, user_id, emp_id,
             decision, redis_history, summary, trace,
+            access_token=access_token,
         )
 
     else:
         answer = _run_faq(
             message, language, tenant_id, user_id,
             decision, redis_history, summary, trace,
+            image_situation=image_situation,
         )
 
     # ── Persist ───────────────────────────────────────────────────────────────
@@ -218,6 +266,7 @@ def handle_message(
 def _run_troubleshooting_recheck(
     message, language, tenant_id, user_id, emp_id,
     active_ctx, decision, redis_history, summary, trace,
+    access_token: str = "",
 ):
     from agent.planner import run_troubleshooting_agent
     recheck_emp_id  = (active_ctx or {}).get("employee_id") or emp_id
@@ -226,7 +275,7 @@ def _run_troubleshooting_recheck(
     trace.set_route(route="Route.TROUBLESHOOTING", reason=f"recheck: {decision.reason}")
     agent_result = run_troubleshooting_agent(
         employee_id=recheck_emp_id, issue=message, language=language,
-        tenant_id=tenant_id, sub_type=recheck_subtype,
+        tenant_id=tenant_id, sub_type=recheck_subtype, access_token=access_token,
     )
     trace.set_troubleshooting(
         employee_id=recheck_emp_id,
@@ -255,12 +304,13 @@ def _run_troubleshooting_recheck(
 def _run_troubleshooting_new(
     message, language, tenant_id, user_id, emp_id,
     decision, redis_history, summary, trace,
+    access_token: str = "",
 ):
     from agent.planner import run_troubleshooting_agent
     trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
     agent_result = run_troubleshooting_agent(
         employee_id=emp_id, issue=message, language=language,
-        tenant_id=tenant_id, sub_type=decision.template_key,
+        tenant_id=tenant_id, sub_type=decision.template_key, access_token=access_token,
     )
     trace.set_troubleshooting(
         employee_id=emp_id,
@@ -288,8 +338,11 @@ def _run_troubleshooting_new(
 def _run_faq_followup(
     message, language, tenant_id, user_id,
     active_ctx, decision, redis_history, summary, trace,  # noqa: ARG001 active_ctx kept for signature compat
+    image_situation: str = "",
 ):
     rag_query = decision.search_query or message
+    if image_situation:
+        rag_query = f"{rag_query} {image_situation}"
     trace.set_route(route=str(Route.FAQ), reason=f"faq_followup: {decision.reason}")
     _t0 = time.perf_counter()
     result = retrieve(rag_query, tenant_id, language, top_k=3)
@@ -306,6 +359,13 @@ def _run_faq_followup(
         prev = (f"[Previous answer on related topic]\n"
                 f"Q: {cached_faq['question']}\nA: {cached_faq['answer']}\n\n")
         context = prev + context if context else prev
+
+    if image_situation:
+        context = _prepend_image_situation(context, image_situation, language)
+        logging.getLogger("image_flow").info(
+            f"[image-flow] APPLIED image situation to FAQ followup context "
+            f"({len(image_situation)} chars)"
+        )
 
     from pipeline.answer_generator import FOLLOWUP_SYSTEM_PROMPT
     base   = FOLLOWUP_SYSTEM_PROMPT.get(language, FOLLOWUP_SYSTEM_PROMPT["th"])
@@ -327,9 +387,14 @@ def _run_faq_followup(
 def _run_faq(
     message, language, tenant_id, user_id,
     decision, redis_history, summary, trace,
+    image_situation: str = "",
 ):
     cached_faq = load_faq_context(tenant_id, user_id)
     rag_query  = decision.search_query or message
+    # Augment retrieval query with image keywords so we match fee/error/etc.
+    # FAQs that the user's bare question wouldn't surface on its own.
+    if image_situation:
+        rag_query = f"{rag_query} {image_situation}"
 
     trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key)
     _t0 = time.perf_counter()
@@ -345,10 +410,15 @@ def _run_faq(
     # High-confidence match: return the article answer + image verbatim.
     # Articles with images: the image IS the answer — always direct-pass, LLM must not be in the middle.
     # Text-only articles: require gap ≥ 0.05 vs rank #2 to avoid returning wrong article when two are close.
+    # Image-situation present: skip direct-pass — the LLM must combine FAQ with the user's screen.
     _rank2_score = result.documents[1].score if len(result.documents) > 1 else 0.0
     _gap = top_score - _rank2_score
     _has_image = bool(top_doc and top_doc.image_urls)
-    if top_doc and top_score >= 0.45 and not cached_faq and (_has_image or _gap >= 0.05):
+    if (
+        top_doc and top_score >= 0.45 and not cached_faq
+        and not image_situation
+        and (_has_image or _gap >= 0.05)
+    ):
         from pipeline.answer_generator import GeneratedAnswer
         answer = GeneratedAnswer(
             text=top_doc.answer,
@@ -367,6 +437,13 @@ def _run_faq(
         prev = (f"[Previous answer on related topic]\n"
                 f"Q: {cached_faq['question']}\nA: {cached_faq['answer']}\n\n")
         context = prev + context if context else prev
+
+    if image_situation:
+        context = _prepend_image_situation(context, image_situation, language)
+        logging.getLogger("image_flow").info(
+            f"[image-flow] APPLIED image situation to FAQ context "
+            f"({len(image_situation)} chars, top_score={top_score:.3f})"
+        )
 
     system = _build_system_with_summary(SYSTEM_PROMPT.get(language, SYSTEM_PROMPT["th"]), summary)
     answer = generate_answer(

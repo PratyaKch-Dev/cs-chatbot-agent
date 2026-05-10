@@ -1,268 +1,617 @@
 {
   "EMP001": {
-    "_scenario": "Normal active user — all systems good",
+    "_scenario": "Normal active user — remaining_count > 0, all good",
+    "remaining_count": 3500,
     "profile": {
-      "employee_id": "EMP001",
-      "name": "สมชาย ใจดี",
+      "user_id": "EMP001",
+      "company_id": "101",
       "status": "active",
-      "eligible_for_withdrawal": true,
-      "blacklisted": false,
-      "enrollment_date": "2025-01-15"
+      "status_reason": null,
+      "remark": null
+    },
+    "company": {
+      "name": "บริษัท ทดสอบ จำกัด",
+      "status": "active"
+    },
+    "bank_account": {
+      "bank_code": "004",
+      "branch_name": "สาขาสีลม",
+      "account_verify": "verified",
+      "account_name": "สมชาย ใจดี",
+      "account_no": "XXXXXX1234",
+      "account_no_full": "1234567890",
+      "bank_logo_url": ""
     },
     "paycycle": {
-      "start_date": "2026-03-01",
-      "end_date": "2026-03-31"
+      "id": 1001,
+      "start": "2026-04-01T17:00:00.000Z",
+      "cutoff": "2026-04-24T09:00:00.000Z",
+      "end": "2026-04-25T16:59:59.999Z",
+      "next_start": "2026-04-26T16:59:59.999Z",
+      "paycycle_status": "active"
     },
-    "attendance": {
+    "deductions": {
+      "total_deducted": 0.0,
+      "deductions_updated_at": "2026-04-26T02:00:00.000Z"
+    },
+    "sync": {
+      "sync_type": "auto",
+      "schedules": [
+        {
+          "frequency": "daily",
+          "days": [],
+          "time": "02:00"
+        }
+      ]
+    },
+    "_mock_attendance": {
       "total_present": 18,
       "total_absent": 1,
       "total_late": 2,
       "records": [
-        {"date": "2026-03-24", "check_in": "08:55", "check_out": "18:02", "remarks": null},
-        {"date": "2026-03-25", "check_in": "09:20", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-26", "check_in": "09:20", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-27", "check_in": "08:50", "check_out": "18:05", "remarks": null},
-        {"date": "2026-03-28", "check_in": "09:10", "check_out": "18:00", "remarks": null}
+        {
+          "date": "2026-04-21",
+          "check_in": "08:55",
+          "check_out": "18:02",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-22",
+          "check_in": "09:20",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-23",
+          "check_in": "09:20",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-24",
+          "check_in": "08:50",
+          "check_out": "18:05",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-25",
+          "check_in": "09:10",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        }
       ]
-    },
-    "deductions": {
-      "total_deducted": 600.0,
-      "deductions_updated_at": "2026-03-27T02:00:00"
-    },
-    "sync": {
-      "last_sync": "2026-03-27T02:00:00",
-      "next_sync": "2026-03-28T02:00:00",
-      "sync_status": "synced"
     }
   },
-
   "EMP002": {
-    "_scenario": "inactive / blocked account",
+    "_scenario": "Inactive account — status_reason provided",
+    "remaining_count": 0,
     "profile": {
-      "employee_id": "EMP002",
-      "name": "วิไล รักงาน",
+      "user_id": "EMP002",
+      "company_id": "101",
       "status": "inactive",
-      "eligible_for_withdrawal": false,
-      "blacklisted": false,
-      "enrollment_date": "2024-06-01"
+      "status_reason": "พนักงานลาออกและยังไม่ได้อัปเดตสถานะ",
+      "remark": null
+    },
+    "company": {
+      "name": "บริษัท ทดสอบ จำกัด",
+      "status": "active"
+    },
+    "bank_account": {
+      "bank_code": "014",
+      "branch_name": "",
+      "account_verify": "verified",
+      "account_name": "วิไล รักงาน",
+      "account_no": "XXXXXX5678",
+      "account_no_full": "9876543210",
+      "bank_logo_url": ""
     },
     "paycycle": {
-      "start_date": "2026-03-01",
-      "end_date": "2026-03-31"
+      "id": 1002,
+      "start": "2026-04-01T17:00:00.000Z",
+      "cutoff": "2026-04-24T09:00:00.000Z",
+      "end": "2026-04-25T16:59:59.999Z",
+      "next_start": "2026-04-26T16:59:59.999Z",
+      "paycycle_status": "active"
     },
-    "attendance": {
+    "deductions": {
+      "total_deducted": 0.0,
+      "deductions_updated_at": "2026-04-26T02:00:00.000Z"
+    },
+    "sync": {
+      "sync_type": "auto",
+      "schedules": [
+        {
+          "frequency": "daily",
+          "days": [],
+          "time": "02:00"
+        }
+      ]
+    },
+    "_mock_attendance": {
       "total_present": 20,
       "total_absent": 0,
       "total_late": 0,
       "records": [
-        {"date": "2026-03-24", "check_in": "08:45", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-25", "check_in": "08:50", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-26", "check_in": "08:55", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-27", "check_in": "08:40", "check_out": "18:00", "remarks": null}
+        {
+          "date": "2026-04-21",
+          "check_in": "08:45",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-22",
+          "check_in": "08:50",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-23",
+          "check_in": "08:55",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-24",
+          "check_in": "08:40",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        }
       ]
-    },
-    "deductions": {
-      "period": "2026-03",
-      "total_deducted": 0.0,
-      "items": []
-    },
-    "sync": {
-      "last_sync": "2026-03-27T02:00:00",
-      "next_sync": "2026-03-28T02:00:00",
-      "sync_status": "synced"
     }
   },
-
   "EMP003": {
-    "_scenario": "Attendance anomalies — missed check-ins with system remarks",
+    "_scenario": "No bank account linked",
+    "remaining_count": 0,
     "profile": {
-      "employee_id": "EMP003",
-      "name": "ประยุทธ์ มีสุข",
+      "user_id": "EMP003",
+      "company_id": "101",
       "status": "active",
-      "eligible_for_withdrawal": true,
-      "blacklisted": false,
-      "enrollment_date": "2025-06-01"
+      "status_reason": null,
+      "remark": null
+    },
+    "company": {
+      "name": "บริษัท ทดสอบ จำกัด",
+      "status": "active"
+    },
+    "bank_account": {
+      "bank_code": null,
+      "branch_name": null,
+      "account_verify": null,
+      "account_name": null,
+      "account_no": null,
+      "account_no_full": null,
+      "bank_logo_url": null
     },
     "paycycle": {
-      "start_date": "2026-03-01",
-      "end_date": "2026-03-31"
+      "id": 1003,
+      "start": "2026-04-01T17:00:00.000Z",
+      "cutoff": "2026-04-24T09:00:00.000Z",
+      "end": "2026-04-25T16:59:59.999Z",
+      "next_start": "2026-04-26T16:59:59.999Z",
+      "paycycle_status": "active"
     },
-    "attendance": {
+    "deductions": {
+      "total_deducted": 0.0,
+      "deductions_updated_at": "2026-04-26T02:00:00.000Z"
+    },
+    "sync": {
+      "sync_type": "auto",
+      "schedules": [
+        {
+          "frequency": "weekly",
+          "days": [
+            "MON",
+            "THU"
+          ],
+          "time": "05:00"
+        }
+      ]
+    },
+    "_mock_attendance": {
       "total_present": 17,
       "total_absent": 0,
       "total_late": 0,
       "records": [
-        {"date": "2026-03-24", "check_in": "08:50", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-25", "check_in": null,    "check_out": "18:05", "remarks": "ลืม check in"},
-        {"date": "2026-03-26", "check_in": "09:00", "check_out": null,    "remarks": "ลืม check out"},
-        {"date": "2026-03-27", "check_in": null,    "check_out": null,    "remarks": "บัตรพนักงานเสีย — HR บันทึกให้"},
-        {"date": "2026-03-28", "check_in": "08:55", "check_out": "18:00", "remarks": null}
+        {
+          "date": "2026-04-21",
+          "check_in": "08:50",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-22",
+          "check_in": "09:00",
+          "check_out": "18:05",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-23",
+          "check_in": "09:00",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-24",
+          "check_in": "08:55",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        }
       ]
-    },
-    "deductions": {
-      "period": "2026-03",
-      "total_deducted": 0.0,
-      "items": []
-    },
-    "sync": {
-      "last_sync": "2026-03-31T02:00:00",
-      "next_sync": "2026-04-01T02:00:00",
-      "sync_status": "synced"
     }
   },
-
   "EMP004": {
-    "_scenario": "Payroll sync pending — withdrawal limit not updated",
+    "_scenario": "Bank account linked but not verified",
+    "remaining_count": 0,
     "profile": {
-      "employee_id": "EMP004",
-      "name": "นภาพร ทองดี",
+      "user_id": "EMP004",
+      "company_id": "101",
       "status": "active",
-      "eligible_for_withdrawal": false,
-      "blacklisted": false,
-      "enrollment_date": "2025-03-01"
+      "status_reason": null,
+      "remark": null
+    },
+    "company": {
+      "name": "บริษัท ทดสอบ จำกัด",
+      "status": "active"
+    },
+    "bank_account": {
+      "bank_code": "011",
+      "branch_name": "",
+      "account_verify": "pending",
+      "account_name": "นภาพร ทองดี",
+      "account_no": "XXXXXX9058",
+      "account_no_full": "1112479058",
+      "bank_logo_url": "https://d27npaycvagyws.cloudfront.net/banks/logo/TTB.png"
     },
     "paycycle": {
-      "start_date": "2026-03-01",
-      "end_date": "2026-03-31"
+      "id": 1004,
+      "start": "2026-04-01T17:00:00.000Z",
+      "cutoff": "2026-04-24T09:00:00.000Z",
+      "end": "2026-04-25T16:59:59.999Z",
+      "next_start": "2026-04-26T16:59:59.999Z",
+      "paycycle_status": "active"
     },
-    "attendance": {
+    "deductions": {
+      "total_deducted": 0.0,
+      "deductions_updated_at": "2026-04-26T02:00:00.000Z"
+    },
+    "sync": {
+      "sync_type": "auto",
+      "schedules": [
+        {
+          "frequency": "daily",
+          "days": [],
+          "time": "02:00"
+        }
+      ]
+    },
+    "_mock_attendance": {
       "total_present": 22,
       "total_absent": 0,
       "total_late": 0,
       "records": [
-        {"date": "2026-03-24", "check_in": "08:30", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-25", "check_in": "08:30", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-26", "check_in": "08:30", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-27", "check_in": "08:30", "check_out": "18:00", "remarks": null}
+        {
+          "date": "2026-04-21",
+          "check_in": "08:30",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-22",
+          "check_in": "08:30",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-23",
+          "check_in": "08:30",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-24",
+          "check_in": "08:30",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        }
       ]
-    },
-    "deductions": {
-      "period": "2026-03",
-      "total_deducted": 0.0,
-      "items": []
-    },
-    "sync": {
-      "last_sync": "2026-03-20T02:00:00",
-      "next_sync": null,
-      "sync_status": "pending"
     }
   },
-
-  "EMP006": {
-    "_scenario": "Low balance — eligible but paycycle just started",
-    "profile": {
-      "employee_id": "EMP006",
-      "name": "มานะ ตั้งใจ",
-      "status": "active",
-      "eligible_for_withdrawal": false,
-      "blacklisted": false,
-      "enrollment_date": "2026-02-01"
-    },
-    "paycycle": {
-      "start_date": "2026-04-01",
-      "end_date": "2026-04-30"
-    },
-    "attendance": {
-      "total_present": 20,
-      "total_absent": 0,
-      "total_late": 0,
-      "records": [
-        {"date": "2026-03-24", "check_in": "08:55", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-25", "check_in": "09:00", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-26", "check_in": "08:50", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-27", "check_in": "09:05", "check_out": "18:00", "remarks": null}
-      ]
-    },
-    "deductions": {
-      "period": "2026-04",
-      "total_deducted": 0.0,
-      "items": []
-    },
-    "sync": {
-      "last_sync": "2026-03-31T02:00:00",
-      "next_sync": "2026-04-01T02:00:00",
-      "sync_status": "synced"
-    }
-  },
-
   "EMP005": {
-    "_scenario": "Blacklisted user",
+    "_scenario": "Salary deductions reduce balance to 0",
+    "remaining_count": 0,
     "profile": {
-      "employee_id": "EMP005",
-      "name": "กิตติ แสนดี",
+      "user_id": "EMP005",
+      "company_id": "101",
       "status": "active",
-      "eligible_for_withdrawal": false,
-      "blacklisted": true,
-      "enrollment_date": "2024-09-15"
+      "status_reason": null,
+      "remark": null
+    },
+    "company": {
+      "name": "บริษัท ทดสอบ จำกัด",
+      "status": "active"
+    },
+    "bank_account": {
+      "bank_code": "004",
+      "branch_name": "สาขาสีลม",
+      "account_verify": "verified",
+      "account_name": "กิตติ แสนดี",
+      "account_no": "XXXXXX2222",
+      "account_no_full": "2222222222",
+      "bank_logo_url": ""
     },
     "paycycle": {
-      "start_date": "2026-03-01",
-      "end_date": "2026-03-31"
+      "id": 1005,
+      "start": "2026-04-01T17:00:00.000Z",
+      "cutoff": "2026-04-24T09:00:00.000Z",
+      "end": "2026-04-25T16:59:59.999Z",
+      "next_start": "2026-04-26T16:59:59.999Z",
+      "paycycle_status": "active"
     },
-    "attendance": {
+    "deductions": {
+      "total_deducted": 1300.0,
+      "deductions_updated_at": "2026-04-26T02:00:00.000Z"
+    },
+    "sync": {
+      "sync_type": "auto",
+      "schedules": [
+        {
+          "frequency": "weekly",
+          "days": [
+            "SUN",
+            "TUE"
+          ],
+          "time": "05:30"
+        }
+      ]
+    },
+    "_mock_attendance": {
       "total_present": 16,
       "total_absent": 2,
       "total_late": 3,
       "records": [
-        {"date": "2026-03-24", "check_in": "09:00", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-25", "check_in": null,    "check_out": null,    "remarks": null},
-        {"date": "2026-03-26", "check_in": "09:00", "check_out": "18:00", "remarks": null},
-        {"date": "2026-03-27", "check_in": "09:45", "check_out": "18:00", "remarks": null}
+        {
+          "date": "2026-04-21",
+          "check_in": "09:00",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-22",
+          "check_in": null,
+          "check_out": null,
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-23",
+          "check_in": "09:00",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-24",
+          "check_in": "09:45",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        }
       ]
-    },
-    "deductions": {
-      "period": "2026-03",
-      "total_deducted": 1300.0,
-      "items": [
-        {"type": "absent", "amount": 1000.0, "description": "หักขาดงาน 2 วัน", "date": "2026-03-18"},
-        {"type": "late",   "amount": 300.0,  "description": "หักมาสาย 3 ครั้ง", "date": "2026-03-27"}
-      ]
-    },
-    "sync": {
-      "last_sync": "2026-03-27T02:00:00",
-      "next_sync": "2026-03-28T02:00:00",
-      "sync_status": "synced"
     }
   },
-
-  "EMP007": {
-    "_scenario": "Deductions reduce balance to 0 — eligible_for_withdrawal false, no blacklist",
+  "EMP006": {
+    "_scenario": "Payroll sync pending — limit not yet updated (mock-only field sync_status)",
+    "remaining_count": 0,
     "profile": {
-      "employee_id": "EMP007",
-      "name": "อรุณ บุญมา",
+      "user_id": "EMP006",
+      "company_id": "101",
       "status": "active",
-      "eligible_for_withdrawal": false,
-      "blacklisted": false,
-      "enrollment_date": "2025-01-15"
+      "status_reason": null,
+      "remark": null
+    },
+    "company": {
+      "name": "บริษัท ทดสอบ จำกัด",
+      "status": "active"
+    },
+    "bank_account": {
+      "bank_code": "006",
+      "branch_name": "",
+      "account_verify": "verified",
+      "account_name": "มานะ ตั้งใจ",
+      "account_no": "XXXXXX3333",
+      "account_no_full": "3333333333",
+      "bank_logo_url": ""
     },
     "paycycle": {
-      "start_date": "2026-04-01",
-      "end_date": "2026-04-30"
-    },
-    "attendance": {
-      "total_present": 18,
-      "total_absent": 2,
-      "total_late": 3,
-      "records": [
-        {"date": "2026-04-21", "check_in": "08:55", "check_out": "18:00", "remarks": null},
-        {"date": "2026-04-22", "check_in": "09:00", "check_out": "18:05", "remarks": null},
-        {"date": "2026-04-23", "check_in": "08:50", "check_out": "18:00", "remarks": null},
-        {"date": "2026-04-24", "check_in": "09:00", "check_out": "18:00", "remarks": null},
-        {"date": "2026-04-25", "check_in": "09:00", "check_out": "18:00", "remarks": null}
-      ]
+      "id": 1006,
+      "start": "2026-04-01T17:00:00.000Z",
+      "cutoff": "2026-04-24T09:00:00.000Z",
+      "end": "2026-04-25T16:59:59.999Z",
+      "next_start": "2026-04-26T16:59:59.999Z",
+      "paycycle_status": "active"
     },
     "deductions": {
-      "period": "2026-04",
-      "total_deducted": 1300.0,
-      "items": [
-        {"type": "absent", "amount": 1000.0, "description": "หักขาดงาน 2 วัน", "date": "2026-04-14"},
-        {"type": "late",   "amount": 300.0,  "description": "หักมาสาย 3 ครั้ง", "date": "2026-04-17"}
-      ]
+      "total_deducted": 0.0,
+      "deductions_updated_at": "2026-04-26T02:00:00.000Z"
     },
     "sync": {
-      "last_sync": "2026-04-26T02:00:00",
-      "next_sync": "2026-04-27T02:00:00",
-      "sync_status": "synced"
+      "sync_type": "manual",
+      "schedules": [],
+      "_mock_sync_status": "pending"
+    },
+    "_mock_attendance": {
+      "total_present": 20,
+      "total_absent": 0,
+      "total_late": 0,
+      "records": [
+        {
+          "date": "2026-04-21",
+          "check_in": "08:55",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-22",
+          "check_in": "09:00",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-23",
+          "check_in": "08:50",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-24",
+          "check_in": "09:05",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        }
+      ]
+    }
+  },
+  "EMP007": {
+    "_scenario": "Attendance anomalies — missed check-ins with system remarks",
+    "remaining_count": 0,
+    "profile": {
+      "user_id": "EMP007",
+      "company_id": "101",
+      "status": "active",
+      "status_reason": null,
+      "remark": null
+    },
+    "company": {
+      "name": "บริษัท ทดสอบ จำกัด",
+      "status": "active"
+    },
+    "bank_account": {
+      "bank_code": "004",
+      "branch_name": "",
+      "account_verify": "verified",
+      "account_name": "อรุณ บุญมา",
+      "account_no": "XXXXXX4444",
+      "account_no_full": "4444444444",
+      "bank_logo_url": ""
+    },
+    "paycycle": {
+      "id": 1007,
+      "start": "2026-04-01T17:00:00.000Z",
+      "cutoff": "2026-04-24T09:00:00.000Z",
+      "end": "2026-04-25T16:59:59.999Z",
+      "next_start": "2026-04-26T16:59:59.999Z",
+      "paycycle_status": "active"
+    },
+    "deductions": {
+      "total_deducted": 0.0,
+      "deductions_updated_at": "2026-04-26T02:00:00.000Z"
+    },
+    "sync": {
+      "sync_type": "auto",
+      "schedules": [
+        {
+          "frequency": "weekly",
+          "days": [
+            "SUN",
+            "TUE"
+          ],
+          "time": "05:30"
+        }
+      ]
+    },
+    "_mock_attendance": {
+      "total_present": 17,
+      "total_absent": 0,
+      "total_late": 0,
+      "records": [
+        {
+          "date": "2026-04-21",
+          "check_in": "08:50",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        },
+        {
+          "date": "2026-04-22",
+          "check_in": null,
+          "check_out": "18:05",
+          "metadata": {
+            "remark": "ลืม check in"
+          }
+        },
+        {
+          "date": "2026-04-23",
+          "check_in": "09:00",
+          "check_out": null,
+          "metadata": {
+            "remark": "ลืม check out"
+          }
+        },
+        {
+          "date": "2026-04-24",
+          "check_in": null,
+          "check_out": null,
+          "metadata": {
+            "remark": "บัตรพนักงานเสีย — HR บันทึกให้"
+          }
+        },
+        {
+          "date": "2026-04-25",
+          "check_in": "08:55",
+          "check_out": "18:00",
+          "metadata": {
+            "remark": null
+          }
+        }
+      ]
     }
   }
 }

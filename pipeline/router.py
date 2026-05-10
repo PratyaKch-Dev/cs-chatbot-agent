@@ -262,6 +262,7 @@ def _llm_classify(
     recent_history: list[dict] | None = None,
     active_context: str = "",
     summary: str = "",
+    image_situation: str = "",
 ) -> Optional[RouteDecision]:
     """
     Call fast LLM to classify message + conv_state.
@@ -285,6 +286,12 @@ def _llm_classify(
 
         if active_context:
             parts.append(f"Active context:\n{active_context}")
+
+        if image_situation:
+            parts.append(
+                f"User's screen (from image they sent earlier):\n{image_situation}\n"
+                f"Use this as the user's current situation when classifying and writing search_query."
+            )
 
         parts.append(f"New message: {message}")
         content = "\n\n".join(parts)
@@ -395,6 +402,7 @@ def decide_route(
     recent_history: list[dict] | None = None,
     active_context: str = "",
     summary: str = "",
+    image_situation: str = "",
 ) -> RouteDecision:
     """
     LLM classifies the message → route + conv_state + followup_type.
@@ -405,6 +413,7 @@ def decide_route(
         recent_history=recent_history,
         active_context=active_context,
         summary=summary,
+        image_situation=image_situation,
     )
     if decision:
         return decision

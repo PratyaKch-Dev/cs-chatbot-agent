@@ -18,9 +18,13 @@ context:
 cache:
   ttl_seconds: 7200          # 2 hours — last FAQ docs or last diagnosis result
 
+pending_image:
+  ttl_seconds: 1800          # 30 min — image context lives only as long as the session
+
 keys:
-  session:  "chat:session"
-  history:  "chat:memory"
-  summary:  "chat:summary"
-  context:  "chat:context"
-  cache:    "chat:cache"
+  session:        "chat:session"
+  history:        "chat:memory"
+  summary:        "chat:summary"
+  context:        "chat:context"
+  cache:          "chat:cache"
+  pending_image:  "chat:pending_image"

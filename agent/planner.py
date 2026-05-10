@@ -15,6 +15,7 @@ import logging
 
 from agent.tools.employee_data import get_employee_data
 from agent.tools.attendance import get_attendance
+from agent.tools._token import set_token
 from agent.evidence import (
     build_diagnostic_context, format_for_llm, get_filled_template,
 )
@@ -37,9 +38,15 @@ def run_troubleshooting_agent(
     language: str,
     tenant_id: str,
     sub_type: str = "",
+    access_token: str = "",
 ) -> dict:
     """
     Run deterministic tool calls based on the sub-type from the router.
+
+    Args:
+        employee_id:   Used for mock lookups and logging. Real API derives
+                       user from access_token — BE does not trust this value.
+        access_token:  Bearer token from mobile. Required for real API calls.
 
     Returns:
         {
@@ -54,6 +61,10 @@ def run_troubleshooting_agent(
     strategy = _TOOL_STRATEGY.get(sub_type, _DEFAULT_STRATEGY)
     _logger.info(f"[planner] {employee_id} | sub_type={sub_type!r} | tools={strategy}")
 
+    # Inject token so the tool picks up the real client when token is present
+    if access_token:
+        set_token(access_token)
+
     tool_outputs: dict[str, str] = {}
 
     for tool_name in strategy:
@@ -63,7 +74,6 @@ def run_troubleshooting_agent(
                     {"employee_id": employee_id}
                 )
             elif tool_name == "get_attendance":
-                # Extract paycycle start_date from employee_data if available
                 from datetime import date
                 date_from = _extract_paycycle_start(tool_outputs.get("get_employee_data", ""))
                 date_to   = date.today().isoformat()
@@ -102,9 +112,22 @@ def run_troubleshooting_agent(
 
 def _extract_paycycle_start(employee_data_output: str) -> str:
     """
-    Pull paycycle start_date from the employee_data tool output string.
-    Returns empty string if not found — get_attendance will use its own default.
+    Extract date_from for the Attendance API from the paycycle data.
+
+    Handles both API shapes:
+      new: paycycle.start = "2026-04-01T17:00:00.000Z"  → "2026-04-01"
+      old: paycycle.start_date = "2026-04-01"            → "2026-04-01"
     """
-    import re
-    match = re.search(r"start_date[\"']?\s*:\s*[\"']?([\d\-]+)", employee_data_output)
-    return match.group(1) if match else ""
+    import re, json
+    try:
+        data = json.loads(employee_data_output)
+        paycycle = data.get("paycycle", {})
+        # New API: paycycle.start is ISO datetime — take date part only
+        start = paycycle.get("start") or paycycle.get("start_date", "")
+        if start:
+            return start[:10]  # "2026-04-01T..." → "2026-04-01"
+    except Exception:
+        pass
+    # Fallback: regex scan
+    m = re.search(r'"start(?:_date)?"\s*:\s*"([\d\-]{10})', employee_data_output)
+    return m.group(1) if m else ""

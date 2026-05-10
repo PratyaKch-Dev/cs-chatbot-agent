@@ -1,16 +1,10 @@
-"""LangChain tool — unified employee data (profile, sync, deductions, paycycle, attendance snapshot)."""
+"""LangChain tool — unified employee data (profile, bank, deductions, sync)."""
 
 import json
 import os
 
 from langchain_core.tools import tool
-
-if os.environ.get("USE_MOCK_APIS", "true").lower() == "true":
-    from agent.clients.mock.employee_data_mock import MockEmployeeDataClient as _Client
-else:
-    from agent.clients.employee_data_client import EmployeeDataClient as _Client  # type: ignore
-
-_client = _Client()
+from agent.tools._token import set_token, get_token  # noqa: F401 — re-export set_token for planner
 
 
 @tool
@@ -19,21 +13,34 @@ def get_employee_data(employee_id: str) -> str:
     Get all core employee data in one call.
 
     Returns:
-      - profile: status, blacklist flag, eligibility
-      - sync: last/next sync timestamps and sync_status
-      - deductions: salary deduction items for the current period
-      - paycycle: current pay cycle start_date and end_date
-      - attendance_snapshot: records for the last 7 days (or since paycycle
-        start if that is more recent) — sufficient for most diagnostics
+      - remaining_count: withdrawal eligibility (>0 = can withdraw)
+      - profile: status, status_reason, remark, user_id
+      - company: name and status
+      - bank_account: bank_code, account_no, account_verify
+      - sync: sync_type, schedules
+      - deductions: total_deducted
+      - paycycle: paycycle_status and dates
+      - attendance_snapshot: last 7 days (mock only)
 
-    Always call this tool first. If you need attendance history beyond 7 days,
-    call get_attendance afterwards with a custom date range (max 30 days,
-    configurable via MAX_ATTENDANCE_DAYS).
+    Always call this tool first for withdrawal troubleshooting.
     """
+    use_mock = os.environ.get("USE_MOCK_APIS", "true").lower() == "true"
+    token = get_token()
+
+    if use_mock or not token:
+        from agent.clients.mock.employee_data_mock import MockEmployeeDataClient
+        client = MockEmployeeDataClient()
+    else:
+        from agent.clients.employee_data_client import EmployeeDataClient
+        client = EmployeeDataClient(token)
+
     try:
-        data = _client.get_employee_data(employee_id)
+        data = client.get_employee_data(employee_id)
         return json.dumps({
+            "remaining_count":     data.remaining_count,
             "profile":             data.profile,
+            "company":             data.company,
+            "bank_account":        data.bank_account,
             "sync":                data.sync,
             "deductions":          data.deductions,
             "paycycle":            data.paycycle,

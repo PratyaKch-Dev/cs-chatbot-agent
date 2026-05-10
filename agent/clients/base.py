@@ -18,7 +18,7 @@ class AttendanceRecord:
     date: str
     check_in: Optional[str]
     check_out: Optional[str]
-    remarks: Optional[str] = None   # e.g. "ลืม check in", "บัตรเสีย — HR บันทึกให้"
+    remarks: Optional[str] = None
 
 
 @dataclass
@@ -67,22 +67,36 @@ class SyncSchedule:
 @dataclass
 class EmployeeData:
     """
-    Returned by the first API call — profile, sync, deductions, pay cycle,
-    and a short attendance snapshot (≤7 days, from paycycle start).
+    Unified employee data — returned by the Profile API or mock.
+
+    Real API fields (GET /api/user/profile):
+        remaining_count  — withdrawal eligibility (>0 = can withdraw)
+        profile          — status, status_reason, remark, user_id, company_id
+        company          — name, status
+        bank_account     — bank_code, account_no, account_verify, …
+        paycycle         — paycycle_status, start, cutoff, end, next_start
+        deductions       — total_deducted, deductions_updated_at
+        sync             — sync_type, schedules (list)
+
+    Mock-only fields:
+        attendance_snapshot — filtered attendance records (last 7 days)
     """
     employee_id: str
-    profile: dict
-    sync: dict
-    deductions: dict
-    paycycle: dict              # {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}
-    attendance_snapshot: dict   # filtered to max(paycycle_start, today-7d) → today
+    remaining_count: int = 0
+    profile: dict = field(default_factory=dict)
+    company: dict = field(default_factory=dict)
+    bank_account: dict = field(default_factory=dict)
+    paycycle: dict = field(default_factory=dict)
+    deductions: dict = field(default_factory=dict)
+    sync: dict = field(default_factory=dict)
+    attendance_snapshot: dict = field(default_factory=dict)
 
 
 # ── Abstract client interfaces ────────────────────────────────────────────────
 
 class BaseEmployeeDataClient(ABC):
     @abstractmethod
-    def get_employee_data(self, employee_id: str) -> EmployeeData: ...
+    def get_employee_data(self, employee_id: str = "") -> EmployeeData: ...
 
 
 class BaseAttendanceClient(ABC):

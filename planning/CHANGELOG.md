@@ -29,3 +29,6 @@ Add a new file here each time something is updated — never edit old entries.
 | [014](changes/014_redis_circuit_breaker_and_multi_message_combiner.md) | 2026-05-03 | Redis Circuit Breaker & Multi-Message Combiner | fix + feature | 2 |
 | [015](changes/015_handoff_skill_and_session_resume.md) | 2026-05-03 | Handoff Skill & Session Resume | config | pre-phase |
 | [016](changes/016_image_sticker_file_support.md) | 2026-05-03 | Image, Sticker & File Message Support | feature | 2 |
+| [017](changes/017_user_profile_api_integration.md) | 2026-05-04 | User Profile API Integration | feature | 3 |
+| [018](changes/018_attendance_api_integration.md) | 2026-05-04 | Attendance API Integration | feature | 3 |
+| [019](changes/019_image_clarifying_flow.md) | 2026-05-10 | Image-Only Clarifying Question Flow | feature | 2 |

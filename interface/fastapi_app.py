@@ -1,12 +1,10 @@
 """
-FastAPI application — LINE Messaging API webhook.
+FastAPI application — LINE Messaging API webhook + in-app chat API.
 
 Handles:
-- LINE webhook signature validation (HMAC-SHA256)
-- Multi-message debounce combining (memory.buffer)
-- Message routing to pipeline orchestrator
-- Reply via LINE Push API (so reply_token expiry doesn't affect combined messages)
-- Health check endpoint
+- POST /chat        — in-app chat (mobile sends message + access_token directly)
+- POST /webhook     — LINE Messaging API webhook (signature validation, debounce)
+- GET  /health      — health check
 """
 
 import asyncio
@@ -18,6 +16,7 @@ import os
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, Response
+from pydantic import BaseModel
 from linebot.v3 import WebhookParser
 from linebot.v3.messaging import (
     AsyncApiClient,
@@ -52,6 +51,54 @@ parser = WebhookParser(_channel_secret)
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 
+
+# ── In-app chat API ───────────────────────────────────────────────────────────
+
+class _ChatRequest(BaseModel):
+    user_id: str
+    message: str
+    access_token: str           # Salary Hero token; mock phase: pass employee_id (EMP001 etc.)
+    tenant_id: str = "hns"
+
+
+class _ChatResponse(BaseModel):
+    reply: str
+
+
+@app.post("/chat", response_model=_ChatResponse)
+async def chat(body: _ChatRequest) -> _ChatResponse:
+    """
+    In-app chat endpoint — mobile sends message + access_token per request.
+
+    The access_token is passed directly to the troubleshooting pipeline:
+      - Mock phase (USE_MOCK_APIS=true): access_token = employee_id (e.g. "EMP001")
+      - Real phase: access_token = Salary Hero Bearer token; BE derives user from it
+
+    Response is synchronous — the mobile app waits for the reply.
+    """
+    if not body.user_id or not body.message:
+        raise HTTPException(status_code=400, detail="user_id and message are required")
+
+    _logger.info(f"[chat] {body.tenant_id}/{body.user_id} token={'set' if body.access_token else 'none'}")
+
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: handle_message(
+                tenant_id=body.tenant_id,
+                user_id=body.user_id,
+                message=body.message,
+                access_token=body.access_token,
+            ),
+        )
+        return _ChatResponse(reply=result.answer)
+    except Exception as e:
+        _logger.error(f"[chat] pipeline error for {body.user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Internal error")
+
+
+# ── LINE webhook ──────────────────────────────────────────────────────────────
 
 @app.post("/webhook")
 async def webhook(request: Request) -> Response:
@@ -101,7 +148,6 @@ async def webhook(request: Request) -> Response:
         )
 
     # Return 200 immediately — LINE requires a fast ACK.
-    # Actual reply is sent async by buffer after debounce window.
     return Response(content="OK", status_code=200)
 
 
@@ -118,7 +164,6 @@ def _make_flush_handler(tenant_id: str, user_id: str):
                 tenant_id=tenant_id,
                 user_id=user_id,
                 message=combined,
-                employee_id=user_id,
             ),
         )
 
@@ -169,5 +214,5 @@ async def _handle_image(tenant_id: str, user_id: str, message_id: str) -> None:
 
 
 def _resolve_tenant(event: Any) -> str:
-    """Resolve tenant ID from LINE event. TODO Phase 8: map from tenants.yaml."""
+    """Resolve tenant ID from LINE event. TODO: map from tenants.yaml."""
     return "hns"

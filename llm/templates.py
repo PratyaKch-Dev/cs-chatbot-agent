@@ -44,3 +44,33 @@ def get_template(intent: str, language: str) -> str | None:
     """
     templates = THAI_TEMPLATES if language == "th" else ENGLISH_TEMPLATES
     return templates.get(intent)
+
+
+def build_image_clarify_reply(
+    language: str,
+    description: str,
+    suggestions: list[str],
+) -> str:
+    """
+    Build the clarifying question shown when a user sends an image without text.
+    Echoes the full image description so the user can confirm what was seen,
+    then lists 2-3 suggested intents pulled from config/image_intents.yaml.
+    """
+    desc = (description or "").strip()
+
+    if language == "th":
+        head = "เห็นภาพที่คุณส่งแล้วค่ะ"
+        question = "ต้องการให้ช่วยเรื่องอะไรคะ?"
+    else:
+        head = "I can see the image you sent."
+        question = "What would you like help with?"
+
+    parts = [head]
+    if desc:
+        parts.append("")
+        parts.append(desc)
+    parts.append("")
+    parts.append(question)
+    if suggestions:
+        parts.extend(f"• {s}" for s in suggestions)
+    return "\n".join(parts)

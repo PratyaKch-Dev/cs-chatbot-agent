@@ -1,0 +1,70 @@
+# Image-only clarifying-question intents.
+# When a user sends an image without text, the chatbot uses keyword matching
+# against the vision-generated description to suggest 2-3 likely intents,
+# then asks the user to pick one before answering.
+#
+# How matching works (pipeline/image_intent.py):
+#   - Lowercase the image description
+#   - For each intent (in order), check if any keyword appears in the description
+#   - First match wins; falls back to "generic" if nothing matches
+#
+# To add a new pattern: append a new intent block. Order = priority.
+
+intents:
+  - id: fee_outstanding
+    keywords_th: ["ค่าธรรมเนียม", "ค้างชำระ", "ต้องชำระ"]
+    keywords_en: ["fee", "outstanding", "owed", "must pay"]
+    suggestions_th:
+      - "วิธีชำระค่าธรรมเนียม"
+      - "ทำไมถึงมีค่าธรรมเนียมนี้"
+    suggestions_en:
+      - "How to pay this fee"
+      - "Why do I have this fee"
+
+  - id: balance_zero
+    keywords_th: ["ยอดเงิน 0", "฿ 0", "฿0", "ยอดคงเหลือ 0", "ยอด 0"]
+    keywords_en: ["balance 0", "zero balance", "$0", "0 balance"]
+    suggestions_th:
+      - "ทำไมยอดเงินเป็น 0"
+      - "วิธีเพิ่มยอดเงินที่เบิกได้"
+    suggestions_en:
+      - "Why is my balance 0"
+      - "How do I increase my withdrawable balance"
+
+  - id: withdrawal_failed
+    keywords_th: ["เบิกไม่ได้", "ถอนไม่ได้", "เบิกเงินไม่ได้"]
+    keywords_en: ["withdrawal failed", "cannot withdraw", "can't withdraw"]
+    suggestions_th:
+      - "ทำไมเบิกเงินไม่ได้"
+      - "วิธีแก้ปัญหาเบิกเงิน"
+    suggestions_en:
+      - "Why can't I withdraw"
+      - "How to fix withdrawal issue"
+
+  - id: login_issue
+    keywords_th: ["เข้าระบบไม่ได้", "ล็อกอินไม่ได้", "เข้าสู่ระบบ"]
+    keywords_en: ["cannot login", "login failed", "can't log in", "sign in"]
+    suggestions_th:
+      - "วิธีเข้าสู่ระบบ"
+      - "ลืมรหัสผ่าน"
+    suggestions_en:
+      - "How to log in"
+      - "Forgot password"
+
+  - id: error_message
+    keywords_th: ["error", "ข้อผิดพลาด", "เกิดข้อผิดพลาด"]
+    keywords_en: ["error", "exception", "something went wrong"]
+    suggestions_th:
+      - "ความหมายของข้อความ error นี้"
+      - "วิธีแก้ปัญหา"
+    suggestions_en:
+      - "What does this error mean"
+      - "How to fix this"
+
+  - id: generic
+    suggestions_th:
+      - "อธิบายภาพให้ฟัง"
+      - "ขอความช่วยเหลือ"
+    suggestions_en:
+      - "Explain what this shows"
+      - "Help me with this"

@@ -2,6 +2,120 @@
 
 ---
 
+## Message Type Handler (LINE & Gradio)
+
+```
+Incoming event (LINE webhook / Gradio)
+        │
+   What type?
+   ┌──────────┬───────────────┬──────────────┐
+   │  text    │  image        │  sticker     │  file → "unsupported" reply
+   │  ↓       │  ↓            │  ↓           │
+   │ pass     │ Gemini vision │ greeting     │
+   │ through  │ describe()    │ template     │
+   │          │ → text desc   │ (no pipeline)│
+   └──────────┴───────────────┴──────────────┘
+        │
+ (Gradio: image + text → combined into ONE message)
+ "[ภาพ] <vision description>\nคำถาม: <user text>"
+        │
+   Pipeline (handle_message)
+```
+
+| Event type | Handler | Result |
+|-----------|---------|--------|
+| **text** | Pass through directly | Normal pipeline flow |
+| **image** | `llm/vision.py` → Gemini `gemini-2.0-flash` | Vision description → pipeline as text |
+| **sticker** | Friendly greeting template | No pipeline — immediate reply |
+| **file/audio/video** | Unsupported message template | No pipeline — immediate reply |
+
+> **Gradio note:** when user attaches an image alongside text, both are merged into a single message so the pipeline receives full context (description + question) in one turn.
+
+---
+
+## Image-Only Clarifying Flow
+
+When a user sends an **image with no text**, the bot asks what they need help with before answering — so the final answer is grounded in both the image situation and the user's actual intent.
+
+```
+Q1: User sends image only
+        │
+   describe_image() → Gemini vision
+        │
+   Buffer flushes — image_handler detects image-only batch
+        │
+   classify_image_intent()
+   keyword match against config/image_intents.yaml
+   → intent_id (e.g. fee_outstanding), suggestions
+        │
+   save_pending_image() → Redis (TTL 30 min)
+   key: chat:pending_image:{tenant}:{user}
+        │
+   Bot replies:
+   ─────────────────────────────────────────
+   เห็นภาพที่คุณส่งแล้วค่ะ
+
+   1. ภาพแสดงหน้าจอ Salary on Demand ยอด ฿ 0
+   2. ค่าธรรมเนียมค้างชำระ ฿149.99 รายการ #3353419
+   3. ต้องชำระค่าธรรมเนียมเพื่อใช้งานต่อไป
+
+   ต้องการให้ช่วยเรื่องอะไรคะ?
+   • วิธีชำระค่าธรรมเนียม
+   • ทำไมถึงมีค่าธรรมเนียมนี้
+   ─────────────────────────────────────────
+
+Q2: User replies "ต้องทำยังไงถึงจะเบิกเงินได้"
+        │
+   orchestrator.handle_message()
+        │
+   load_pending_image() from Redis → found
+        │
+   ┌─ Router receives TWO inputs ─────────────────────────┐
+   │  image_situation: "ค่าธรรมเนียมค้างชำระ ฿149.99..."  │
+   │  message:         "ต้องทำยังไงถึงจะเบิกเงินได้"       │
+   └──────────────────────────────────────────────────────┘
+        │
+   LLM router sees image as USER'S CURRENT SCREEN STATE
+   → decides intent + generates search_query using both
+   e.g. intent=faq, search_query="ขั้นตอนชำระเงินคืน"
+        │
+   clear_pending_image() from Redis
+        │
+   _run_faq()
+   ├── retrieval query augmented with image keywords
+   ├── direct-pass shortcut SKIPPED (image context present)
+   └── image situation prepended to Context:
+       "[สถานการณ์เฉพาะของผู้ใช้จากภาพหน้าจอ...]
+        ค่าธรรมเนียม ฿149.99 ค้างชำระ...
+        --- FAQ articles follow ---"
+        │
+   LLM generates answer using BOTH image situation + FAQ context
+   → "คุณมีค่าธรรมเนียมค้างชำระ ฿149.99 ต้องชำระก่อน ถึงจะเบิกเงินได้ค่ะ"
+```
+
+| Step | File | Detail |
+|------|------|--------|
+| **Detect image-only** | `pipeline/image_handler.py` | Checks if all buffer messages are `[ภาพ]` with no plain text |
+| **Keyword classifier** | `pipeline/image_intent.py` | Matches description against `config/image_intents.yaml` (5 patterns + generic) |
+| **Pending store** | `memory/pending_image.py` | Redis key `chat:pending_image:{tenant}:{user}`, TTL = 30 min |
+| **Reply builder** | `llm/templates.py:build_image_clarify_reply` | Shows full description + bulleted suggestions |
+| **Router input** | `pipeline/router.py:_llm_classify` | Receives `image_situation` as separate named input — LLM decides routing using both |
+| **Context injection** | `pipeline/orchestrator.py:_prepend_image_situation` | Prepends image situation to RAG context with a strong "primary grounding" label |
+
+**Edge cases:**
+
+| Scenario | Behaviour |
+|----------|-----------|
+| Image + text sent together | Pre-combined → direct to pipeline, no clarifying question |
+| User doesn't reply within 30 min | Redis TTL expires → pending image auto-cleared |
+| Second image sent before replying | Overwrites pending (last image wins) |
+| Redis down | Graceful degradation — existing pipeline runs without image context |
+| Vision fails | Falls back to "ผู้ใช้ส่งรูปภาพ" description |
+
+> **Freshchat integration point:** `interface/freshchat_app.py` stub documents exactly where to slot in the image download, `extract_image_only_description`, and `build_clarifying_reply` calls — same provider-agnostic helpers used by Gradio.
+
+---
+
 ## Request Router (LLM-based)
 
 ```
@@ -103,6 +217,36 @@ CSV Files (public FAQ + company-specific)
 
 ---
 
+## Solutions FAQ Pipeline (Freshdesk)
+
+```
+Freshdesk Solutions.json
+      │
+ convert_solutions_json.py
+ (extract articles → tag company_id / source_type)
+      │
+ data/faqs/solutions_faq.csv
+ (2,589 rows — default articles + company-specific)
+      │
+ index_solutions.py
+ (merge default + company-specific → one collection per company)
+      │
+ Upsert to Qdrant
+ collection: {company}_{lang}
+```
+
+| Step | Detail |
+|------|--------|
+| **Source** | `Freshdesk Solutions.json` — exported from Freshdesk Help Center |
+| **Converter** | `indexers/convert_solutions_json.py` → `data/faqs/solutions_faq.csv` |
+| **Indexer** | `indexers/index_solutions.py` — per-company: default articles + company-specific merged into each collection |
+| **Size** | 2,589 rows across all companies and languages |
+| **Source types** | `non_login` · `login` · `feature_sod` · `feature_flexben` · `feature_direct_debit` |
+| **Tags** | `default` (all companies) · `company_specific` (one company only) |
+| **Skill** | `/solutions` — convert + index + verify in one command |
+
+---
+
 ## FAQ Pipeline (online)
 
 ```
@@ -113,9 +257,9 @@ User Question
       │
  Embed (cached LRU 500)
       │
- Qdrant Search (top 5)
+ Qdrant Search (top 25)
       │
- BGE Reranker (top 5, threshold 0.3)
+ BGE Reranker (top 5 → filter threshold 0.3 → return top 3)
       │
  Build Context
       │
@@ -123,7 +267,7 @@ User Question
       │
  Grounding Check (word-overlap score)
       │
- score == 0.0 (LLM failed)?        → Human Handoff  ← always
+ score == 0.0 AND retrieval < 0.4? → Human Handoff  ← LLM error + weak retrieval
  score < 0.25 AND retrieval < 0.4? → Human Handoff  ← weak match
       │
  Return Answer
@@ -262,8 +406,10 @@ Run: `USE_MOCK_APIS=true PYTHONPATH=. python scripts/test_troubleshooting.py`
 10   EMP006    ยอดเงินเป็น 0 ครับ            ok (clean)      ✅
 11   EMP001    ทำไมยอดไม่อัปเดต              ok (clean)      ✅
 12   EMP001    หักเงินเท่าไหร่               ok (clean)      ✅
+13   EMP007    ทำไมเบิกเงินไม่ได้            has_deductions  ✅
+14   EMP007    ยอดเงินเหลือ 0 เพราะอะไร      has_deductions  ✅
 
-Total: 12  |  Passed: 12  |  Failed: 0  |  Accuracy: 100%
+Total: 14  |  Passed: 14  |  Failed: 0  |  Accuracy: 100%
 ```
 
 **Full 1-1 chat results — all 6 employees:**
@@ -355,6 +501,25 @@ Bot:  ตรวจสอบข้อมูลของ มานะ ตั้ง
       - ปิดแอปแล้วเปิดใหม่เพื่อรีเฟรชยอดเงิน
       - ตรวจสอบว่ามีสัญญาณอินเทอร์เน็ต
       - หากยังมีปัญหา ติดต่อแอดมิน Salary Hero ได้เลยค่ะ
+```
+
+---
+
+**EMP007** — อรุณ บุญมา | `root_cause: has_deductions` | template: `has_deductions`
+```
+User: ทำไมเบิกเงินไม่ได้
+
+Bot:  พบรายการหักเงินของ อรุณ บุญมา ที่ทำให้ยอดเงินที่เบิกได้เป็น 0 ค่ะ
+
+      รายการหักเงินเดือน เม.ย. 2026:
+        หักขาดงาน 2 วัน     ฿1,000.00   (14 เม.ย. 2026)
+        หักมาสาย 3 ครั้ง    ฿300.00     (17 เม.ย. 2026)
+        ─────────────────────────────
+        รวมหักทั้งหมด       ฿1,300.00
+
+      ยอดที่ถูกหักทำให้ยอดเงินที่มีสิทธิ์เบิกในรอบนี้เป็น 0 บาท
+
+      หากต้องการตรวจสอบรายละเอียดเพิ่มเติม กรุณาติดต่อ HR ค่ะ
 ```
 
 ---
@@ -489,6 +654,46 @@ User sends message
 | `chat:summary:{tenant}:{user}:{lang}` | Rolling 2–3 sentence recap | 7 days |
 | `chat:context:{tenant}:{user}` | Active topic / case / remark / status | 30 min (troubleshooting) · 1 day (FAQ) |
 | `chat:cache:{tenant}:{user}` | Last FAQ doc IDs or last diagnosis | 2 hours |
+
+---
+
+### Redis Circuit Breaker
+
+`memory/redis_client.py` runs a startup health check (`check_redis_health()` in `main.py`) before the first message is processed.
+
+| State | Behaviour |
+|-------|-----------|
+| **Healthy** | Normal operation — all Redis reads/writes proceed |
+| **First failure** | Logs `WARNING`, sets `_available = False` (circuit open) |
+| **Circuit open** | All subsequent calls raise immediately — no connection attempt, no per-message errors |
+| **Recovery** | `check_redis_health()` called again — if Redis responds, circuit closes and normal operation resumes |
+
+> All memory modules (history, summary, context, session) downgrade Redis-error logs to `DEBUG` — only the circuit breaker logs at `WARNING` level, so the startup log is the single signal for Redis unavailability.
+
+---
+
+### Multi-Message Combiner (Gradio)
+
+Handles users who send multiple messages in rapid succession (e.g. "เบิกไม่ได้" then "ช่วยดูหน่อยครับ").
+
+```
+Message 1 arrives → enqueue_msg → timer starts
+Message 2 arrives (mid-flight) → enqueue_msg → combined with message 1
+        │
+process_messages() fires
+        │
+  Combine: "เบิกไม่ได้\nช่วยดูหน่อยครับ"
+  Run pipeline once (one LLM call, one API call)
+        │
+  Display: each user bubble shown separately
+           bot reply shown only under the last message
+```
+
+| Detail | |
+|--------|---|
+| **Module** | `pipeline/combiner.py` — thread-safe push / claim / is_current / complete / reset |
+| **Race fix** | `_committed_store` dict updated synchronously so queued `process_messages` calls read correct state instead of stale `gr.State` |
+| **Result** | One pipeline call per burst — avoids duplicate API/LLM calls for split messages |
 
 ---
 

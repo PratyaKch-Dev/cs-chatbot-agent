@@ -23,6 +23,7 @@ SUMMARY_TTL_SECONDS                  = _cfg["summary"]["ttl_seconds"]
 FAQ_CONTEXT_TTL_SECONDS              = _cfg["context"]["faq_ttl_seconds"]
 TROUBLESHOOTING_CONTEXT_TTL_SECONDS  = _cfg["context"]["troubleshooting_ttl_seconds"]
 CACHE_TTL_SECONDS                    = _cfg["cache"]["ttl_seconds"]
+PENDING_IMAGE_TTL_SECONDS            = _cfg["pending_image"]["ttl_seconds"]
 
 # ── Key builders ──────────────────────────────────────────────────────────────
 _k = _cfg["keys"]
@@ -41,3 +42,6 @@ def context_key(tenant_id: str, user_id: str) -> str:
 
 def cache_key(tenant_id: str, user_id: str) -> str:
     return f"{_k['cache']}:{tenant_id}:{user_id}"
+
+def pending_image_key(tenant_id: str, user_id: str) -> str:
+    return f"{_k['pending_image']}:{tenant_id}:{user_id}"

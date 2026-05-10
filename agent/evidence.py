@@ -1,14 +1,18 @@
 """
 Evidence collector and diagnostic context builder.
 
-Parses raw JSON tool outputs from the LangChain troubleshooting agent and
-synthesizes them into a structured DiagnosticContext for the answer generator.
+Parses raw JSON tool outputs and synthesizes them into a DiagnosticContext
+for the answer generator.
 
 Root cause priority order (checked in sequence, first match wins):
-    1. blacklisted        — account on blacklist
+    1. blacklisted        — account on blacklist (mock only)
     2. suspended          — account status = suspended
-    3. sync_pending       — payroll sync not yet run
-    4. ok                 — no blocking issue found
+    3. status_inactive    — account status not active
+    4. deduction          — total_deducted > 0 and remaining_count = 0
+    5. no_bank            — missing bank_code or account_no
+    6. bank_unverified    — account_verify != verified
+    7. sync_pending       — payroll sync not yet run (mock only)
+    8. ok                 — no blocking issue found
 """
 
 import json
@@ -21,11 +25,22 @@ _TH_MONTHS = [
     "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค.",
 ]
 
-
 _EN_MONTHS = [
     "", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ]
+
+_DAY_TH = {
+    "SUN": "อาทิตย์", "MON": "จันทร์", "TUE": "อังคาร",
+    "WED": "พุธ",     "THU": "พฤหัส",  "FRI": "ศุกร์", "SAT": "เสาร์",
+}
+_DAY_EN = {
+    "SUN": "Sun", "MON": "Mon", "TUE": "Tue",
+    "WED": "Wed", "THU": "Thu", "FRI": "Fri", "SAT": "Sat",
+}
+
+_FREQ_TH = {"daily": "ทุกวัน", "weekly": "รายสัปดาห์", "monthly": "รายเดือน"}
+_FREQ_EN = {"daily": "Daily",  "weekly": "Weekly",      "monthly": "Monthly"}
 
 
 def _fmt_date_short(date_str: str, lang: str) -> str:
@@ -42,16 +57,8 @@ def _fmt_date_short(date_str: str, lang: str) -> str:
 
 
 def _format_attendance_table(records: list, lang: str) -> str:
-    """
-    Render attendance records as inline per-row entries.
-
-    Format (th): 27 มี.ค. 2026  เข้า 08:50 น. / ออก 18:00 น.  ⚠️ remark
-    Format (en): 27 Mar 2026  In 08:50 / Out 18:00  ⚠️ remark
-    Missing punch shown as —
-    """
     if not records:
         return ""
-
     dash = "—"
     lines = []
     for r in records:
@@ -59,7 +66,6 @@ def _format_attendance_table(records: list, lang: str) -> str:
         ci_raw   = r.get("check_in")
         co_raw   = r.get("check_out")
         remark   = r.get("remarks") or ""
-
         if lang == "th":
             ci = f"{ci_raw} น." if ci_raw else dash
             co = f"{co_raw} น." if co_raw else dash
@@ -68,26 +74,56 @@ def _format_attendance_table(records: list, lang: str) -> str:
             ci = ci_raw or dash
             co = co_raw or dash
             line = f"  {date_str}  In {ci} / Out {co}"
-
         if remark:
             line += f"  ⚠️ {remark}"
         lines.append(line)
-
     return "\n".join(lines)
 
 
 def _fmt_datetime(iso: str | None, lang: str) -> str:
-    """Convert '2026-03-20T02:00:00' → '20 มี.ค. 2026 เวลา 02:00 น.' (th) or 'Mar 20, 2026 02:00' (en)."""
+    """Convert ISO datetime → readable local string."""
     if not iso:
         return "ยังไม่มีกำหนด" if lang == "th" else "Not scheduled"
     try:
-        dt = datetime.fromisoformat(iso)
+        # Handle trailing Z
+        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
         if lang == "th":
             return f"{dt.day} {_TH_MONTHS[dt.month]} {dt.year} เวลา {dt.strftime('%H:%M')} น."
         else:
             return dt.strftime("%b %d, %Y %H:%M")
     except ValueError:
         return iso
+
+
+def _format_sync_schedules(schedules: list, lang: str) -> str:
+    """Format sync.schedules list for display."""
+    if not schedules:
+        return "ไม่มีกำหนดการ" if lang == "th" else "No schedule configured"
+    lines = []
+    for s in schedules:
+        freq = s.get("frequency", "")
+        days = s.get("days", [])
+        time = s.get("time", "")
+        if lang == "th":
+            freq_str = _FREQ_TH.get(freq, freq)
+            days_str = ", ".join(_DAY_TH.get(d, d) for d in days)
+            parts = [freq_str]
+            if days_str:
+                parts.append(f"วัน{days_str}")
+            if time:
+                parts.append(f"เวลา {time} น.")
+            lines.append("  • " + " ".join(parts))
+        else:
+            freq_str = _FREQ_EN.get(freq, freq)
+            days_str = ", ".join(_DAY_EN.get(d, d) for d in days)
+            parts = [freq_str]
+            if days_str:
+                parts.append(f"on {days_str}")
+            if time:
+                parts.append(f"at {time}")
+            lines.append("  • " + " ".join(parts))
+    return "\n".join(lines)
+
 
 import yaml
 
@@ -111,26 +147,35 @@ def _get_template(scenario: str, lang: str) -> str:
 
 # ── Root cause keys ────────────────────────────────────────────────────────────
 
-RC_BLACKLISTED   = "blacklisted"
-RC_SUSPENDED     = "suspended"
-RC_INACTIVE      = "status_inactive"   # non-active status (inactive, terminated, etc.)
-RC_SYNC_PENDING  = "sync_pending"
-RC_OK            = "ok"
+RC_BLACKLISTED     = "blacklisted"
+RC_SUSPENDED       = "suspended"
+RC_INACTIVE        = "status_inactive"
+RC_DEDUCTION       = "deduction"
+RC_NO_BANK         = "no_bank"
+RC_BANK_UNVERIFIED = "bank_unverified"
+RC_SYNC_PENDING    = "sync_pending"
+RC_OK              = "ok"
 
 _ROOT_CAUSE_LABELS = {
     "th": {
-        RC_BLACKLISTED:  "บัญชีถูกระงับการใช้งาน (blacklist)",
-        RC_SUSPENDED:    "สถานะบัญชีถูกระงับโดย HR",
-        RC_INACTIVE:     "สถานะบัญชีไม่ได้ใช้งาน (ไม่ใช่ active)",
-        RC_SYNC_PENDING: "ระบบยังไม่ได้ซิงค์ข้อมูลเงินเดือน",
-        RC_OK:           "ไม่พบปัญหาที่ชัดเจน ข้อมูลทุกอย่างปกติ",
+        RC_BLACKLISTED:     "บัญชีถูกระงับการใช้งาน (blacklist)",
+        RC_SUSPENDED:       "สถานะบัญชีถูกระงับโดย HR",
+        RC_INACTIVE:        "สถานะบัญชีไม่ได้ใช้งาน (ไม่ใช่ active)",
+        RC_DEDUCTION:       "มียอดหักเงินในรอบนี้ทำให้ยอดเบิกได้เป็น 0",
+        RC_NO_BANK:         "ยังไม่ได้ผูกบัญชีธนาคาร",
+        RC_BANK_UNVERIFIED: "บัญชีธนาคารยังไม่ได้รับการยืนยัน",
+        RC_SYNC_PENDING:    "ระบบยังไม่ได้ซิงค์ข้อมูลเงินเดือน",
+        RC_OK:              "ไม่พบปัญหาที่ชัดเจน ข้อมูลทุกอย่างปกติ",
     },
     "en": {
-        RC_BLACKLISTED:  "Account is blacklisted",
-        RC_SUSPENDED:    "Account has been suspended by HR",
-        RC_INACTIVE:     "Account status is not active",
-        RC_SYNC_PENDING: "Payroll sync is pending — limit not yet updated",
-        RC_OK:           "No blocking issue found — all systems normal",
+        RC_BLACKLISTED:     "Account is blacklisted",
+        RC_SUSPENDED:       "Account has been suspended by HR",
+        RC_INACTIVE:        "Account status is not active",
+        RC_DEDUCTION:       "Salary deductions have reduced the withdrawable balance to 0",
+        RC_NO_BANK:         "No bank account linked",
+        RC_BANK_UNVERIFIED: "Bank account is not yet verified",
+        RC_SYNC_PENDING:    "Payroll sync is pending — limit not yet updated",
+        RC_OK:              "No blocking issue found — all systems normal",
     },
 }
 
@@ -145,6 +190,18 @@ _SUGGESTED_ACTIONS = {
         ],
         RC_INACTIVE: [
             "ติดต่อฝ่าย HR เพื่อตรวจสอบสถานะบัญชีและขอให้อัปเดตเป็น active",
+        ],
+        RC_DEDUCTION: [
+            "ยอดหักเงินลดยอดเบิกได้เหลือ 0 บาท",
+            "ติดต่อ HR หากคิดว่ารายการหักเงินไม่ถูกต้อง",
+        ],
+        RC_NO_BANK: [
+            "เพิ่มบัญชีธนาคารในแอป Salary Hero ก่อนเบิกเงิน",
+            "ไปที่เมนู 'บัญชีธนาคาร' แล้วกรอกข้อมูลให้ครบ",
+        ],
+        RC_BANK_UNVERIFIED: [
+            "บัญชีธนาคารที่ผูกไว้ยังไม่ผ่านการยืนยัน",
+            "ตรวจสอบและยืนยันบัญชีในแอป หรือติดต่อ HR เพื่อขอความช่วยเหลือ",
         ],
         RC_SYNC_PENDING: [
             "รอให้ระบบซิงค์ข้อมูลในรอบถัดไป (ปกติทุกคืน)",
@@ -164,6 +221,18 @@ _SUGGESTED_ACTIONS = {
         ],
         RC_INACTIVE: [
             "Contact HR to check the account status and update it to active",
+        ],
+        RC_DEDUCTION: [
+            "Salary deductions have brought your withdrawable balance to 0",
+            "Contact HR if you believe any deduction is incorrect",
+        ],
+        RC_NO_BANK: [
+            "Add a bank account in the Salary Hero app before withdrawing",
+            "Go to 'Bank Account' in the menu and fill in your details",
+        ],
+        RC_BANK_UNVERIFIED: [
+            "Your linked bank account is not yet verified",
+            "Complete verification in the app or ask HR for help",
         ],
         RC_SYNC_PENDING: [
             "Wait for the next scheduled sync (normally runs nightly)",
@@ -193,21 +262,9 @@ class DiagnosticContext:
 def build_diagnostic_context(
     employee_id: str,
     issue: str,
-    tool_outputs: dict[str, str],   # {tool_name: raw JSON string from LangChain tool}
+    tool_outputs: dict[str, str],
     language: str = "th",
 ) -> DiagnosticContext:
-    """
-    Parse tool outputs and identify the root cause.
-
-    Args:
-        employee_id:  Employee being diagnosed
-        issue:        Original user complaint
-        tool_outputs: Dict of {tool_name: raw JSON string from LangChain tool}
-        language:     "th" or "en" for suggested actions
-
-    Returns:
-        DiagnosticContext with root_cause and suggested_actions filled in.
-    """
     lang = language if language in ("th", "en") else "th"
 
     findings: dict[str, dict] = {}
@@ -230,22 +287,11 @@ def build_diagnostic_context(
 
 
 def get_filled_template(context: DiagnosticContext, language: str = "th") -> str:
-    """Return the filled answer template for this context, or '' if none found."""
     lang = language if language in ("th", "en") else "th"
     return _build_response_guide(context, lang)
 
 
 def format_for_llm(context: DiagnosticContext, language: str = "th") -> str:
-    """
-    Format DiagnosticContext into a structured string for the answer generator.
-
-    Sections:
-      1. Summary header  — employee + issue
-      2. Root cause      — clear diagnosis
-      3. Actions         — what to do next
-      4. Detail sections — one block per tool (for follow-up questions)
-      5. Follow-ups      — questions the user may want to ask next
-    """
     lang = language if language in ("th", "en") else "th"
     root_label = _ROOT_CAUSE_LABELS[lang].get(context.root_cause, context.root_cause)
     actions    = "\n".join(f"  - {a}" for a in context.suggested_actions)
@@ -276,19 +322,42 @@ def format_for_llm(context: DiagnosticContext, language: str = "th") -> str:
 
 def _identify_root_cause(findings: dict[str, dict]) -> str:
     """Check findings in priority order and return first matching root cause."""
-    emp     = findings.get("get_employee_data", {})
-    profile = emp.get("profile", {})
-    sync    = emp.get("sync", {})
+    emp             = findings.get("get_employee_data", {})
+    remaining_count = emp.get("remaining_count", -1)  # -1 = unknown (old mock without mapping)
+    profile         = emp.get("profile", {})
+    bank            = emp.get("bank_account", {})
+    deductions      = emp.get("deductions", {})
+    sync            = emp.get("sync", {})
 
+    # If remaining_count is known and positive, user can withdraw — no issue
+    if remaining_count > 0:
+        return RC_OK
+
+    # Blacklist check (mock backward compat — real API doesn't have this field)
     if profile.get("blacklisted", False):
         return RC_BLACKLISTED
 
+    # Account status is primary logic
     status = profile.get("status", "active")
     if status == "suspended":
         return RC_SUSPENDED
     if status not in ("active", "", None):
         return RC_INACTIVE
 
+    # Deduction check (real API: deductions.total_deducted)
+    total_deducted = (deductions or {}).get("total_deducted") or 0
+    if total_deducted > 0:
+        return RC_DEDUCTION
+
+    # Bank account checks (real API only — bank is {} for mock)
+    if bank:
+        if not bank.get("bank_code") or not bank.get("account_no"):
+            return RC_NO_BANK
+        verify = bank.get("account_verify", "verified")
+        if verify and verify != "verified":
+            return RC_BANK_UNVERIFIED
+
+    # Sync pending (mock backward compat)
     if sync.get("sync_status") == "pending":
         return RC_SYNC_PENDING
 
@@ -309,10 +378,21 @@ _FOLLOWUP_QUESTIONS = {
             "สถานะบัญชีไม่ใช่ active เพราะอะไร?",
             "ต้องทำอย่างไรให้กลับมาเบิกเงินได้?",
         ],
+        RC_DEDUCTION: [
+            "รายการหักเงินมีอะไรบ้าง?",
+            "ถ้ารายการหักเงินไม่ถูกต้องต้องทำยังไง?",
+        ],
+        RC_NO_BANK: [
+            "เพิ่มบัญชีธนาคารในแอปยังไง?",
+            "ต้องใช้เอกสารอะไรบ้างในการผูกบัญชี?",
+        ],
+        RC_BANK_UNVERIFIED: [
+            "ยืนยันบัญชีธนาคารยังไง?",
+            "รอนานแค่ไหนถึงจะยืนยันเสร็จ?",
+        ],
         RC_SYNC_PENDING: [
             "ระบบ sync ทำงานกี่โมง?",
             "ถ้ารอ sync แล้วยังไม่ขึ้น ต้องทำอย่างไร?",
-            "ทำไม sync ถึง pending?",
         ],
         RC_OK: [
             "ยอดเงินที่เบิกได้คำนวณอย่างไร?",
@@ -333,6 +413,18 @@ _FOLLOWUP_QUESTIONS = {
             "Why is the account status not active?",
             "What do I need to do to withdraw again?",
         ],
+        RC_DEDUCTION: [
+            "What deductions have been applied?",
+            "How do I dispute a deduction?",
+        ],
+        RC_NO_BANK: [
+            "How do I add a bank account?",
+            "What information do I need to link my bank?",
+        ],
+        RC_BANK_UNVERIFIED: [
+            "How do I verify my bank account?",
+            "How long does verification take?",
+        ],
         RC_SYNC_PENDING: [
             "What time does the sync run?",
             "What if the balance still doesn't update after sync?",
@@ -347,49 +439,134 @@ _FOLLOWUP_QUESTIONS = {
 
 
 def _format_detail_sections(findings: dict[str, dict], lang: str) -> str:
-    """One block per tool — shown when user asks for more detail."""
     sections = []
 
-    emp        = findings.get("get_employee_data", {})
-    profile    = emp.get("profile", {})
-    # Prefer explicit get_attendance call (longer range); fall back to snapshot
+    emp      = findings.get("get_employee_data", {})
+    profile  = emp.get("profile", {})
+    bank     = emp.get("bank_account", {})
+    sync     = emp.get("sync", {})
+    deduc    = emp.get("deductions", {})
+    remaining = emp.get("remaining_count", -1)
+
+    # Attendance: prefer explicit get_attendance, fall back to snapshot (mock)
     attendance = findings.get("get_attendance") or emp.get("attendance_snapshot", {})
+
+    # ── Profile / account status ─────────────────────────────────────────────
     if profile and "error" not in profile:
-        if lang == "th":
-            sections.append(
-                "สถานะบัญชี:\n"
-                f"  • ชื่อ: {profile.get('name', '-')}\n"
-                f"  • สถานะ: {profile.get('status', '-')}\n"
-                f"  • สิทธิ์เบิกเงิน: {'มี' if profile.get('eligible_for_withdrawal') else 'ไม่มี'}\n"
-                f"  • Blacklist: {'ใช่ ⚠️' if profile.get('blacklisted') else 'ไม่'}"
-            )
-        else:
-            sections.append(
-                "Account Status:\n"
-                f"  • Name: {profile.get('name', '-')}\n"
-                f"  • Status: {profile.get('status', '-')}\n"
-                f"  • Eligible for withdrawal: {profile.get('eligible_for_withdrawal', '-')}\n"
-                f"  • Blacklisted: {'Yes ⚠️' if profile.get('blacklisted') else 'No'}"
-            )
+        status        = profile.get("status", "-")
+        status_reason = profile.get("status_reason", "") or ""
+        remark        = profile.get("remark", "") or ""
+        name          = profile.get("name", "")  # mock only
 
-    sync    = emp.get("sync", {})
+        if lang == "th":
+            lines = ["สถานะบัญชี:"]
+            if name:
+                lines.append(f"  • ชื่อ: {name}")
+            lines.append(f"  • สถานะ: {status}")
+            if remaining >= 0:
+                lines.append(f"  • ยอดเบิกได้: {'มี' if remaining > 0 else '0 บาท'}")
+            if status_reason:
+                lines.append(f"  • เหตุผล: {status_reason}")
+            if remark:
+                lines.append(f"  • หมายเหตุ: {remark}")
+            sections.append("\n".join(lines))
+        else:
+            lines = ["Account Status:"]
+            if name:
+                lines.append(f"  • Name: {name}")
+            lines.append(f"  • Status: {status}")
+            if remaining >= 0:
+                lines.append(f"  • Withdrawable: {'available' if remaining > 0 else '0 THB'}")
+            if status_reason:
+                lines.append(f"  • Reason: {status_reason}")
+            if remark:
+                lines.append(f"  • Remark: {remark}")
+            sections.append("\n".join(lines))
+
+    # ── Bank account ─────────────────────────────────────────────────────────
+    if bank:
+        bank_code  = bank.get("bank_code", "")
+        account_no = bank.get("account_no", "")   # already masked by BE
+        verify     = bank.get("account_verify", "")
+        verify_icon = "✅" if verify == "verified" else "⚠️"
+        if lang == "th":
+            lines = ["บัญชีธนาคาร:"]
+            if bank_code:
+                lines.append(f"  • รหัสธนาคาร: {bank_code}")
+            if account_no:
+                lines.append(f"  • เลขที่บัญชี: {account_no}")
+            lines.append(f"  • ยืนยันบัญชี: {verify or '-'} {verify_icon}")
+            sections.append("\n".join(lines))
+        else:
+            lines = ["Bank Account:"]
+            if bank_code:
+                lines.append(f"  • Bank code: {bank_code}")
+            if account_no:
+                lines.append(f"  • Account no: {account_no}")
+            lines.append(f"  • Verification: {verify or '-'} {verify_icon}")
+            sections.append("\n".join(lines))
+
+    # ── Deductions ───────────────────────────────────────────────────────────
+    if deduc and "error" not in deduc:
+        total = (deduc.get("total_deducted") or 0)
+        items = deduc.get("items", [])   # mock may have items list
+        updated = deduc.get("deductions_updated_at", "") or ""
+        if total > 0 or items:
+            if lang == "th":
+                lines = [f"การหักเงิน (รวม {total:,.0f} บาท):"]
+                for it in items:
+                    lines.append(f"  - {it['description']}: {it['amount']:,.0f} บาท")
+                if updated:
+                    lines.append(f"  อัปเดตล่าสุด: {_fmt_datetime(updated, 'th')}")
+            else:
+                lines = [f"Deductions (total {total:,.0f} THB):"]
+                for it in items:
+                    lines.append(f"  - {it['description']}: {it['amount']:,.0f} THB")
+                if updated:
+                    lines.append(f"  Last updated: {_fmt_datetime(updated, 'en')}")
+            sections.append("\n".join(lines))
+
+    # ── Sync schedule ────────────────────────────────────────────────────────
     if sync and "error" not in sync:
-        status_icon = "⚠️" if sync.get("sync_status") == "pending" else "✅"
-        if lang == "th":
-            sections.append(
-                "การ Sync ข้อมูล:\n"
-                f"  • สถานะ: {sync.get('sync_status', '-')} {status_icon}\n"
-                f"  • Sync ล่าสุด: {_fmt_datetime(sync.get('last_sync'), 'th')}\n"
-                f"  • Sync ถัดไป: {_fmt_datetime(sync.get('next_sync'), 'th')}"
-            )
-        else:
-            sections.append(
-                "Sync Schedule:\n"
-                f"  • Status: {sync.get('sync_status', '-')} {status_icon}\n"
-                f"  • Last sync: {_fmt_datetime(sync.get('last_sync'), 'en')}\n"
-                f"  • Next sync: {_fmt_datetime(sync.get('next_sync'), 'en')}"
-            )
+        sync_type  = sync.get("sync_type", "")
+        schedules  = sync.get("schedules", [])
+        # old mock fields
+        sync_status = sync.get("sync_status", "")
+        last_sync   = sync.get("last_sync")
+        next_sync   = sync.get("next_sync")
 
+        if sync_type or schedules or sync_status:
+            status_icon = "⚠️" if sync_status == "pending" else ("✅" if sync_status else "")
+            if lang == "th":
+                lines = ["การ Sync ข้อมูล:"]
+                if sync_type:
+                    type_label = "อัตโนมัติ" if sync_type == "auto" else "ด้วยตนเอง"
+                    lines.append(f"  • รูปแบบ: {type_label}")
+                if schedules:
+                    lines.append("  • กำหนดการ:")
+                    lines.append(_format_sync_schedules(schedules, "th"))
+                if sync_status:
+                    lines.append(f"  • สถานะ: {sync_status} {status_icon}")
+                if last_sync:
+                    lines.append(f"  • Sync ล่าสุด: {_fmt_datetime(last_sync, 'th')}")
+                if next_sync:
+                    lines.append(f"  • Sync ถัดไป: {_fmt_datetime(next_sync, 'th')}")
+            else:
+                lines = ["Sync Schedule:"]
+                if sync_type:
+                    lines.append(f"  • Type: {sync_type}")
+                if schedules:
+                    lines.append("  • Configured schedules:")
+                    lines.append(_format_sync_schedules(schedules, "en"))
+                if sync_status:
+                    lines.append(f"  • Status: {sync_status} {status_icon}")
+                if last_sync:
+                    lines.append(f"  • Last sync: {_fmt_datetime(last_sync, 'en')}")
+                if next_sync:
+                    lines.append(f"  • Next sync: {_fmt_datetime(next_sync, 'en')}")
+            sections.append("\n".join(lines))
+
+    # ── Attendance (mock / if present) ───────────────────────────────────────
     if attendance and "error" not in attendance:
         records    = attendance.get("records", [])
         table      = _format_attendance_table(records, lang)
@@ -399,92 +576,105 @@ def _format_detail_sections(findings: dict[str, dict], lang: str) -> str:
             dt = _fmt_date_short(attendance["date_to"],   lang)
             date_range = f" ({df} – {dt})"
 
-        if lang == "th":
-            sections.append(
-                f"การเข้างาน{date_range}:\n"
-                f"  • มา {attendance.get('total_present', 0)} วัน, "
-                f"ขาด {attendance.get('total_absent', 0)} วัน, "
-                f"สาย {attendance.get('total_late', 0)} วัน\n\n"
-                f"{table}"
-            )
-        else:
-            sections.append(
-                f"Attendance{date_range}:\n"
-                f"  • Present: {attendance.get('total_present', 0)}, "
-                f"Absent: {attendance.get('total_absent', 0)}, "
-                f"Late: {attendance.get('total_late', 0)}\n\n"
-                f"{table}"
-            )
-
-    deductions = emp.get("deductions", {})
-    if deductions and "error" not in deductions and deductions.get("items"):
-        items = "\n".join(
-            f"    - {it['description']}: {it['amount']:,.0f} บาท" if lang == "th"
-            else f"    - {it['description']}: {it['amount']:,.0f} THB"
-            for it in deductions["items"]
-        )
-        total = deductions.get("total_deducted", 0)
-        if lang == "th":
-            sections.append(
-                f"การหักเงิน (รวม {total:,.0f} บาท):\n{items}"
-            )
-        else:
-            sections.append(
-                f"Deductions (total {total:,.0f} THB):\n{items}"
-            )
+        if records:
+            if lang == "th":
+                sections.append(
+                    f"การเข้างาน{date_range}:\n"
+                    f"  • มา {attendance.get('total_present', 0)} วัน, "
+                    f"ขาด {attendance.get('total_absent', 0)} วัน, "
+                    f"สาย {attendance.get('total_late', 0)} วัน\n\n"
+                    f"{table}"
+                )
+            else:
+                sections.append(
+                    f"Attendance{date_range}:\n"
+                    f"  • Present: {attendance.get('total_present', 0)}, "
+                    f"Absent: {attendance.get('total_absent', 0)}, "
+                    f"Late: {attendance.get('total_late', 0)}\n\n"
+                    f"{table}"
+                )
 
     return "\n\n".join(sections) if sections else ("  (ไม่มีข้อมูล)" if lang == "th" else "  (no data)")
 
 
 def _build_response_guide(context: DiagnosticContext, lang: str) -> str:
-    """
-    Return a pre-filled template where possible.
-
-    Template priority:
-      1. Blocking root causes → always use template (blacklisted, suspended, inactive, sync_pending)
-      2. ok + deductions      → has_deductions template
-      3. ok + remarks         → attendance_remark template
-      4. ok + no issues       → normal_active template
-      fallback: "" → answer_generator uses LLM
-    """
-    emp        = context.findings.get("get_employee_data", {})
-    profile    = emp.get("profile", {})
-    sync       = emp.get("sync", {})
-    deductions = emp.get("deductions", {})
+    emp      = context.findings.get("get_employee_data", {})
+    profile  = emp.get("profile", {})
+    sync     = emp.get("sync", {})
+    deduc    = emp.get("deductions", {})
+    bank     = emp.get("bank_account", {})
     attendance = context.findings.get("get_attendance") or emp.get("attendance_snapshot", {})
 
-    name      = profile.get("name", context.employee_id)
-    status    = profile.get("status", "active")
+    # Name: prefer profile.name (mock) or fall back to employee_id
+    name   = profile.get("name", "") or context.employee_id
+    status = profile.get("status", "active")
+
+    # status_reason / remark for inline display
+    status_reason_raw = (profile.get("status_reason") or "").strip()
+    remark_raw        = (profile.get("remark") or "").strip()
+    if lang == "th":
+        status_reason_line = f"\nเหตุผล: {status_reason_raw}" if status_reason_raw else ""
+        if remark_raw:
+            status_reason_line += f"\nหมายเหตุ: {remark_raw}"
+    else:
+        status_reason_line = f"\nReason: {status_reason_raw}" if status_reason_raw else ""
+        if remark_raw:
+            status_reason_line += f"\nNote: {remark_raw}"
+
+    # Sync fields — handle both old (mock) and new (real) shapes
     last_sync = _fmt_datetime(sync.get("last_sync"), lang)
     next_sync = _fmt_datetime(sync.get("next_sync"), lang)
+    schedules_text = _format_sync_schedules(sync.get("schedules", []), lang)
+    sync_type_label = ""
+    if sync.get("sync_type"):
+        if lang == "th":
+            sync_type_label = "อัตโนมัติ" if sync.get("sync_type") == "auto" else "ด้วยตนเอง"
+        else:
+            sync_type_label = sync.get("sync_type", "")
 
-    # Collect remarks
-    records = attendance.get("records", []) if attendance else []
-    remarks_list = list(dict.fromkeys(r["remarks"] for r in records if r.get("remarks")))
-    remarks_text = "\n".join(f"  - {r}" for r in remarks_list) if remarks_list else ""
+    # Bank account
+    bank_code  = bank.get("bank_code", "")
+    account_no = bank.get("account_no", "")  # already masked
+    verify     = bank.get("account_verify", "")
 
-    # Format deduction items
-    ded_items = deductions.get("items", []) if deductions else []
+    # Deductions
+    total_deducted = (deduc.get("total_deducted") or 0)
+    ded_items = deduc.get("items", [])  # mock may have items
     if lang == "th":
         deductions_text = "\n".join(
             f"  - {it['description']}: {it['amount']:,.0f} บาท" for it in ded_items
         )
+        if not deductions_text and total_deducted:
+            deductions_text = f"  ยอดหักรวม: {total_deducted:,.0f} บาท"
     else:
         deductions_text = "\n".join(
             f"  - {it['description']}: {it['amount']:,.0f} THB" for it in ded_items
         )
+        if not deductions_text and total_deducted:
+            deductions_text = f"  Total deducted: {total_deducted:,.0f} THB"
 
+    # Attendance remarks (mock only)
+    records = attendance.get("records", []) if attendance else []
+    remarks_list = list(dict.fromkeys(r["remarks"] for r in records if r.get("remarks")))
+    remarks_text = "\n".join(f"  - {r}" for r in remarks_list) if remarks_list else ""
     attendance_table = _format_attendance_table(records, lang)
 
     vars_ = {
-        "name":             name,
-        "employee_id":      context.employee_id,
-        "status":           status,
-        "last_sync":        last_sync,
-        "next_sync":        next_sync,
-        "remarks":          remarks_text,
-        "deductions":       deductions_text,
-        "attendance_table": attendance_table,
+        "name":               name,
+        "employee_id":        context.employee_id,
+        "status":             status,
+        "status_reason_line": status_reason_line,
+        "last_sync":          last_sync,
+        "next_sync":          next_sync,
+        "sync_type":          sync_type_label,
+        "schedules":          schedules_text,
+        "bank_code":          bank_code,
+        "account_no":         account_no,
+        "account_verify":     verify,
+        "total_deducted":     f"{total_deducted:,.0f}",
+        "deductions":         deductions_text,
+        "remarks":            remarks_text,
+        "attendance_table":   attendance_table,
     }
 
     # Pick scenario
@@ -494,11 +684,14 @@ def _build_response_guide(context: DiagnosticContext, lang: str) -> str:
         scenario = "suspended"
     elif context.root_cause == RC_INACTIVE:
         scenario = "status_inactive"
+    elif context.root_cause == RC_DEDUCTION:
+        scenario = "has_deductions"
+    elif context.root_cause == RC_NO_BANK:
+        scenario = "no_bank"
+    elif context.root_cause == RC_BANK_UNVERIFIED:
+        scenario = "bank_unverified"
     elif context.root_cause == RC_SYNC_PENDING:
         scenario = "sync_pending"
-    elif ded_items and not profile.get("eligible_for_withdrawal", True):
-        # Deductions are likely why withdrawal is blocked
-        scenario = "has_deductions"
     elif remarks_list:
         scenario = "attendance_remark"
     else:
@@ -506,7 +699,7 @@ def _build_response_guide(context: DiagnosticContext, lang: str) -> str:
 
     template = _get_template(scenario, lang)
     if not template:
-        return ""   # fall back to LLM
+        return ""
 
     try:
         return template.format(**vars_).strip()
@@ -517,5 +710,3 @@ def _build_response_guide(context: DiagnosticContext, lang: str) -> str:
 def _format_followup_suggestions(root_cause: str, lang: str) -> str:
     questions = _FOLLOWUP_QUESTIONS.get(lang, {}).get(root_cause, [])
     return "\n".join(f"  - {q}" for q in questions)
-
-

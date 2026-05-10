@@ -15,11 +15,16 @@ load_dotenv()
 
 from pipeline.orchestrator import handle_message
 from pipeline.combiner import push, claim, is_current, complete, reset
+from pipeline.image_handler import (
+    extract_image_only_description,
+    build_clarifying_reply,
+)
 from llm.vision import describe_image
 from llm.templates import IMAGE_CAPTION_PREFIX
 import memory.active_context as ac
 from memory.history import clear_history
 from memory.context_cache import clear_context
+from memory.pending_image import clear_pending_image
 from memory.session import end_session
 from memory.summarizer import clear_summary
 
@@ -149,8 +154,22 @@ def build_demo() -> gr.Blocks:
                 if gen is None or not messages:
                     return gr.update(), "", current
 
-                combined = "\n".join(messages)
-                reply, trace = _call_pipeline(combined, tenant_id, employee_id)
+                # Image-only batch: skip pipeline, ask a clarifying question,
+                # store image as pending context for the next user turn.
+                img_only_desc = extract_image_only_description(messages)
+                if img_only_desc:
+                    reply = build_clarifying_reply(tenant_id, employee_id, img_only_desc)
+                    trace = (
+                        "[image-flow] image-only batch detected — pipeline skipped\n"
+                        f"saved pending image ({len(img_only_desc)} chars) for "
+                        f"{tenant_id}/{employee_id}\n"
+                        "next user message will be combined as:\n"
+                        f"  [ภาพ] {img_only_desc}\n"
+                        f"  คำถาม: <user reply>"
+                    )
+                else:
+                    combined = "\n".join(messages)
+                    reply, trace = _call_pipeline(combined, tenant_id, employee_id)
 
                 if not is_current(tenant_id, employee_id, gen):
                     _logger.info(f"[process_messages] gen={gen} NOT current — combining with pending and retrying")
@@ -175,6 +194,7 @@ def build_demo() -> gr.Blocks:
                 clear_history(tenant_id, employee_id, lang)
                 clear_summary(tenant_id, employee_id, lang)
             clear_context(tenant_id, employee_id)
+            clear_pending_image(tenant_id, employee_id)
             ac.clear(tenant_id, employee_id)
             end_session(tenant_id, employee_id)
             return [], "", None, "", []

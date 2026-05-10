@@ -36,6 +36,10 @@ qdrant_storage/
 # macOS
 .DS_Store
 
+# Claude session files
+.claude/last_compact_summary.md
+image/
+
 # Testing
 .pytest_cache/
 .coverage

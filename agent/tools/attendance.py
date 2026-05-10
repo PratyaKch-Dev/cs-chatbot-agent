@@ -1,35 +1,38 @@
-"""LangChain tool — full attendance records for a custom date range (max 30 days, configurable)."""
+"""LangChain tool — attendance records for a date range."""
 
 import json
 import os
 
 from langchain_core.tools import tool
-
-if os.environ.get("USE_MOCK_APIS", "true").lower() == "true":
-    from agent.clients.mock.attendance_mock import MockAttendanceClient as _Client
-else:
-    from agent.clients.attendance_client import AttendanceClient as _Client  # type: ignore
-
-_client = _Client()
+from agent.tools._token import get_token
 
 
 @tool
 def get_attendance(employee_id: str, date_from: str, date_to: str) -> str:
     """
-    Get full attendance records for a custom date range (YYYY-MM-DD).
+    Get attendance records for a date range (YYYY-MM-DD).
 
-    The API enforces a maximum window of MAX_ATTENDANCE_DAYS (default 30, configurable).
-    If date_from is further back than allowed, it is clamped automatically.
+    Use paycycle.start (date part) from get_employee_data as date_from.
+    Use today as date_to.
 
-    Call this tool only when:
-      - The attendance_snapshot from get_employee_data is insufficient
-        (e.g. user asks about a specific past period or anomalies need more context)
-      - You need more than 7 days of history
+    Call only when remaining_count = 0 and no blocking issue found by Profile API
+    (no inactive status, no deduction, no bank issue).
 
-    Use paycycle.start_date from get_employee_data as date_from for the current cycle.
+    Returns records with: date, check_in, check_out, remarks (from metadata.remark).
+    The API enforces a max window of MAX_ATTENDANCE_DAYS (default 60).
     """
+    use_mock = os.environ.get("USE_MOCK_APIS", "true").lower() == "true"
+    token = get_token()
+
+    if use_mock or not token:
+        from agent.clients.mock.attendance_mock import MockAttendanceClient
+        client = MockAttendanceClient()
+    else:
+        from agent.clients.attendance_client import AttendanceClient
+        client = AttendanceClient(token)
+
     try:
-        result = _client.get_attendance(employee_id, date_from, date_to)
+        result = client.get_attendance(employee_id, date_from, date_to)
         return json.dumps(result, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"error": str(e)})
