@@ -316,6 +316,23 @@ def handle_message(
     )
     trace.is_new = decision.is_new
 
+    # ── LLM-classified explicit handoff request — fires immediately ───────────
+    # The router LLM understands semantic intent, so this catches every
+    # paraphrase ("โอน", "ขอแอดมิน", "คุยกับคน", "transfer me to a human")
+    # without a keyword list. The resolver's keyword path stays as a fast-path
+    # for button clicks.
+    if decision.template_key == "handoff_request":
+        _logger.info("[orchestrator] LLM-classified handoff_request → escalating now")
+        trace.set_route(route="Route.TROUBLESHOOTING", reason="llm:handoff_request",
+                        label="handoff_request", is_new=decision.is_new)
+        answer_text = run_handoff_summary(tenant_id, user_id, active_ctx, language)
+        save_turn(tenant_id, user_id, language, message, answer_text)
+        touch_session(tenant_id, user_id)
+        update_rolling_summary_async(tenant_id, user_id, language, message, answer_text)
+        trace.set_answer(text=answer_text, grounding_score=1.0, was_escalated=True)
+        trace.flush()
+        return MessageResult(answer=answer_text, was_escalated=True)
+
     # ── Pending image — apply or discard based on router is_new decision ───────
     image_situation = ""
     if resolution.pending_image and not message.startswith(IMAGE_CAPTION_PREFIX):

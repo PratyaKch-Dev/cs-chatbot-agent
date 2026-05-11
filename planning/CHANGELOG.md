@@ -33,3 +33,4 @@ Add a new file here each time something is updated — never edit old entries.
 | [018](changes/018_attendance_api_integration.md) | 2026-05-04 | Attendance API Integration | feature | 3 |
 | [019](changes/019_image_clarifying_flow.md) | 2026-05-10 | Image-Only Clarifying Question Flow | feature | 2 |
 | [020](changes/020_router_v3_smart_retrieval_pinned_faq_user_handoff.md) | 2026-05-11 | Router v3: Smart FAQ Retrieval, Pinned Articles & User-Controlled Handoff | refactor | 3 |
+| [021](changes/021_llm_handoff_intent_classification.md) | 2026-05-11 | LLM `handoff_request` Intent Classification | refactor + fix | 3 |

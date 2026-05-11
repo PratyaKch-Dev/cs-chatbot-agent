@@ -72,10 +72,12 @@ _END_WORDS = _YES_WORDS | {
 # Phrases the user types/clicks when they explicitly want a human agent.
 # Triggers TRIGGER_HANDOFF immediately, bypassing the recheck loop.
 _HANDOFF_REQUEST_WORDS = {
-    "ต้องการโอน", "โอนไปให้เจ้าหน้าที่", "โอนไปเจ้าหน้าที่",
-    "ติดต่อเจ้าหน้าที่", "คุยกับคน", "คุยกับเจ้าหน้าที่",
+    "ต้องการโอน", "ขอโอน", "โอนเลย",
+    "โอนไปให้เจ้าหน้าที่", "โอนไปเจ้าหน้าที่",
+    "โอนให้เจ้าหน้าที่", "โอนเจ้าหน้าที่",
+    "ติดต่อเจ้าหน้าที่", "คุยกับเจ้าหน้าที่", "คุยกับคน",
+    "ต้องการแอดมิน", "คุยกับแอดมิน", "ขอแอดมิน",
     "talk to agent", "talk to human", "transfer me", "speak with",
-    "ต้องการแอดมิน",
 }
 
 
@@ -173,9 +175,19 @@ def _is_end(message: str) -> bool:
 
 
 def _is_handoff_request(message: str) -> bool:
-    """Detect explicit user request to be transferred to a support agent."""
+    """
+    Detect explicit user request to be transferred to a support agent.
+    Long-form: substring match against `_HANDOFF_REQUEST_WORDS`.
+    Short-form: a bare "โอน" / "transfer" in a short message (≤ 15 chars)
+    is unambiguous in our context — long questions like
+    "เบิกแล้วเงินโอนไปบัญชีไหน" are excluded by the length bound.
+    """
     msg = message.strip().lower()
-    return any(w in msg for w in _HANDOFF_REQUEST_WORDS)
+    if any(w in msg for w in _HANDOFF_REQUEST_WORDS):
+        return True
+    if len(msg) <= 15 and ("โอน" in msg or "transfer" in msg):
+        return True
+    return False
 
 
 # ── Context Interpreter ───────────────────────────────────────────────────────

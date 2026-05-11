@@ -76,6 +76,11 @@ _LABEL_TO_ROUTE: dict[str, Route] = {
     "troubleshooting_money_not_arrived": Route.FAQ,
     "troubleshooting_cant_receive_otp":  Route.FAQ,
     "faq":                               Route.FAQ,
+    # Explicit user request to talk to a human / be transferred. Classified by
+    # the LLM router from any wording ("โอน", "คุยกับคน", "talk to agent",
+    # "ขอเจ้าหน้าที่", anything semantically equivalent) — no keyword list to
+    # maintain. Orchestrator catches this template_key and fires handoff.
+    "handoff_request":                   Route.TROUBLESHOOTING,
 }
 
 # Strip chitchat_ prefix to get the template_key used by generate_answer
@@ -121,9 +126,17 @@ Labels:
   troubleshooting_withdrawal | troubleshooting_signup
   troubleshooting_cant_find_company | troubleshooting_money_not_arrived
   troubleshooting_cant_receive_otp
+  handoff_request
   missing_info
 
 Intent rules:
+  handoff_request
+    = user is explicitly asking to talk to a human agent / be transferred away
+    from the bot. Wording varies — e.g. "โอน", "โอนให้เจ้าหน้าที่", "ขอแอดมิน",
+    "คุยกับคน", "talk to agent", "transfer me", "ขอติดต่อเจ้าหน้าที่". Includes
+    any clearly equivalent paraphrase. is_new=true always.
+    Do NOT classify as handoff_request when the user is asking about a money
+    transfer feature ("โอนเงินไปบัญชีไหน", "วิธีโอนเงิน") — that is `faq`.
   troubleshooting_withdrawal
     = user needs LIVE account/transaction lookup (balance 0, sync issue, not eligible).
     This is the only label that triggers an API call.
