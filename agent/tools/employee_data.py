@@ -24,10 +24,15 @@ def get_employee_data(employee_id: str) -> str:
 
     Always call this tool first for withdrawal troubleshooting.
     """
-    use_mock = os.environ.get("USE_MOCK_APIS", "true").lower() == "true"
+    # Selection rule: presence of a Bearer token = real API call.
+    # When no token is set (Gradio testing, scenario scripts, mocked envs),
+    # fall back to the mock client driven by the `employee_id` argument.
+    # USE_MOCK_APIS=true forces the mock even when a token exists — useful
+    # for debugging without hitting the real backend.
+    force_mock = os.environ.get("USE_MOCK_APIS", "false").lower() == "true"
     token = get_token()
 
-    if use_mock or not token:
+    if force_mock or not token:
         from agent.clients.mock.employee_data_mock import MockEmployeeDataClient
         client = MockEmployeeDataClient()
     else:
@@ -37,14 +42,15 @@ def get_employee_data(employee_id: str) -> str:
     try:
         data = client.get_employee_data(employee_id)
         return json.dumps({
-            "remaining_count":     data.remaining_count,
-            "profile":             data.profile,
-            "company":             data.company,
-            "bank_account":        data.bank_account,
-            "sync":                data.sync,
-            "deductions":          data.deductions,
-            "paycycle":            data.paycycle,
-            "attendance_snapshot": data.attendance_snapshot,
+            "remaining_count":      data.remaining_count,
+            "employee_data_status": data.employee_data_status,
+            "profile":              data.profile,
+            "company":              data.company,
+            "bank_account":         data.bank_account,
+            "sync":                 data.sync,
+            "deductions":           data.deductions,
+            "paycycle":             data.paycycle,
+            "attendance_snapshot":  data.attendance_snapshot,
         }, ensure_ascii=False)
     except Exception as e:
         return json.dumps({"error": str(e)})

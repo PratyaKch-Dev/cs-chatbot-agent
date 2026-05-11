@@ -21,10 +21,12 @@ def get_attendance(employee_id: str, date_from: str, date_to: str) -> str:
     Returns records with: date, check_in, check_out, remarks (from metadata.remark).
     The API enforces a max window of MAX_ATTENDANCE_DAYS (default 60).
     """
-    use_mock = os.environ.get("USE_MOCK_APIS", "true").lower() == "true"
+    # Same selection rule as employee_data: token presence = real API.
+    # USE_MOCK_APIS=true forces mock even when a token is set (debugging).
+    force_mock = os.environ.get("USE_MOCK_APIS", "false").lower() == "true"
     token = get_token()
 
-    if use_mock or not token:
+    if force_mock or not token:
         from agent.clients.mock.attendance_mock import MockAttendanceClient
         client = MockAttendanceClient()
     else:

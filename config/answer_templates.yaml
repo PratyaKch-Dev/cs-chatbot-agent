@@ -6,25 +6,171 @@
 # Available variables:
 #   {name}               — employee name (or employee_id for real API)
 #   {employee_id}        — employee ID
-#   {status}             — account status (active / inactive / suspended)
-#   {status_reason_line} — "\nเหตุผล: ..." if status_reason exists, else ""
+#   {status}             — account status (active / inactive)
+#   {balance_line}       — "ยอดเบิกได้ตอนนี้: X บาท\n\n" header — empty when no balance data.
+#                          Should be the FIRST token in every template so the
+#                          user sees their current withdrawable amount on top.
+#   {remark_line}        — "\nหมายเหตุจาก HR: ..." when profile.metadata.remark is set
+#   {next_start_line}    — "(รอบถัดไปเริ่ม {date})" when paycycle.next_start exists
+#   {sync_line}          — "\n\nรอบ sync: ..." when sync schedules exist
 #   {last_sync}          — last sync timestamp (mock only)
 #   {next_sync}          — next sync timestamp (mock only)
 #   {sync_type}          — auto / manual
 #   {schedules}          — formatted sync schedule list
 #   {bank_code}          — bank code
 #   {account_no}         — masked account number
-#   {account_verify}     — account verification status
+#   {account_verify}     — account verification status (deprecated — not a blocker)
 #   {total_deducted}     — total deduction amount (formatted)
 #   {deductions}         — formatted deduction list
 #   {remarks}            — system remarks found in attendance records (mock)
 #   {attendance_table}   — formatted attendance table (mock)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 3-Section diagnostic for troubleshooting_withdrawal.
+# Edit any string here to change the user-facing wording; no code change needed.
+# Placeholders in {braces} are filled at runtime.
+# ─────────────────────────────────────────────────────────────────────────────
+withdrawal_diagnostic:
+  th:
+    # §1 — balance header
+    balance_header:       "ยอดเบิกได้ตอนนี้"        # full line: "{balance_header}: {amount} {balance_unit}"
+    balance_unit:         "บาท"
+    balance_status_label: "สถานะ"                  # shown as "(สถานะ: <value>)" when not "ready"
+
+    # §2 — eligibility checklist
+    eligibility_pass:     "สิทธิ์การเบิก: ผ่าน ✓"
+    eligibility_header:   "สิทธิ์การเบิก:"
+    # Each check has pass/fail labels + an action line shown under the ✗.
+    # The action line tells the user what to do — edit the `action` field
+    # here to change the suggestion.
+    checks:
+      active:
+        pass:   "บัญชีพร้อมใช้งาน"
+        fail:   "บัญชีของคุณยังไม่พร้อมใช้งาน"
+        action: "→ ติดต่อ HR เพื่อขออัปเดตสถานะบัญชีให้กลับมาใช้งานได้"
+      no_remark:
+        pass:   "ไม่มีหมายเหตุจาก HR"
+        fail:   "พบหมายเหตุจาก HR: \"{remark}\""
+        action: "→ ติดต่อ HR เพื่อสอบถามรายละเอียดของหมายเหตุนี้"
+      bank:
+        pass:   "มีบัญชีธนาคารผูก"
+        fail:   "ยังไม่ผูกบัญชีธนาคาร"
+        action: "→ เพิ่มบัญชีธนาคารในแอป Salary Hero ที่เมนู \"บัญชีธนาคาร\""
+      paycycle_active:
+        pass:   "รอบจ่ายค่าจ้างเปิดอยู่"
+        fail:   "รอบจ่ายค่าจ้างปิดอยู่"
+        action: "→ รอให้บริษัทเริ่มรอบจ่ายค่าจ้างรอบถัดไป หรือติดต่อ HR หากเร่งด่วน"
+      in_window:
+        pass:   "อยู่ในช่วงวันที่อนุญาตให้เบิก"
+        fail:   "นอกช่วงวัน/เลยกำหนดเวลาเบิกของรอบนี้"
+        action: "→ รอจนถึงรอบจ่ายค่าจ้างรอบถัดไป"
+      fresh_data:
+        pass:   "ข้อมูลอัปเดตล่าสุด"
+        fail:   "ข้อมูลยังไม่อัปเดต"
+        action: "→ ระบบจะอัปเดตอัตโนมัติในรอบ sync ถัดไป รอประมาณ 24 ชั่วโมงแล้วลองตรวจสอบใหม่"
+
+    # Translation map for status values that the BE returns as English.
+    # Used wherever a raw status string would otherwise leak into Thai copy
+    # (e.g. balance.status when not "ready"). Add new statuses here without
+    # touching code.
+    status_th:
+      active:     "พร้อมใช้งาน"
+      inactive:   "ไม่พร้อมใช้งาน"
+      ready:      "พร้อม"
+      not_ready:  "ยังไม่พร้อม"
+      up_to_date: "อัปเดตล่าสุด"
+      outdated:   "ยังไม่อัปเดต"
+      pending:    "รอดำเนินการ"
+      verified:   "ยืนยันแล้ว"
+
+    # §3 — balance factors + attendance table (data only, no inline actions)
+    factors_header:        "ทำไมยอดเงินถึงยังไม่ขึ้น หรือเบิกไม่ได้:"
+    deduction_label:       "หักเงินรอบนี้"            # "{deduction_label}: {amount} {balance_unit}"
+    deduction_updated:     "(ข้อมูลล่าสุด {date})"
+    deduction_action:      "→ ติดต่อ HR หากคิดว่ามีรายการหักผิดพลาด"
+    attendance_header:     "รายการเข้า-ออกงาน:"
+    attendance_missing:    "(ไม่มี)"
+    more_records_suffix:   "(+{n} more)"
+    action_missing_check:  "→ ติดต่อ HR ให้บันทึก check_in/out ย้อนหลัง (ยอดจะอัปเดตในรอบ sync ถัดไป)"
+
+    # §4 — unified suggestion block, shown in every scenario
+    suggestions_header: "คำแนะนำ:"
+
+    # Action line for §1 when balance.status is not "ready".
+    # BE only ever returns "ready" | "not_ready" for this field.
+    balance_status_actions:
+      not_ready: "→ ติดต่อ HR เพื่อสอบถามสาเหตุที่ยอดของคุณยังไม่พร้อมเบิก"
+
+    # Closing message for the happy path — eligibility passes, zero deductions,
+    # no missing/remark on attendance. Rendered under the "คำแนะนำ:" header.
+    all_clear_message: |
+      จากที่ตรวจสอบ ทุกอย่างปกติดีค่ะ สามารถกดเบิกเงินได้เลย
+      หากยังเบิกไม่ได้ ลองปิด-เปิดแอปแล้วลองใหม่อีกครั้ง ถ้ายังไม่ได้แจ้งกลับมาได้เลยนะคะ
+
+    # API-failure messages — shown when a real-API call returned an error or
+    # didn't return at all. token_expired is special-cased on HTTP 401.
+    api_errors:
+      header:          "⚠️ ดึงข้อมูลบางส่วนไม่สำเร็จ"
+      token_expired:   "เซสชันของคุณหมดอายุแล้ว กรุณาเข้าสู่ระบบใหม่อีกครั้งค่ะ"
+      profile_fail:    "ไม่สามารถดึงข้อมูลโปรไฟล์ได้ ({reason})"
+      balance_fail:    "ไม่สามารถดึงข้อมูลยอดเบิกได้ ({reason})"
+      attendance_fail: "ไม่สามารถดึงข้อมูลเข้า-ออกงานได้ ({reason})"
+      contact_support: "หากปัญหายังอยู่ กรุณาแจ้งทีมงาน Salary Hero"
+  en:
+    balance_header:       "Withdrawable now"
+    balance_unit:         "THB"
+    balance_status_label: "status"
+
+    eligibility_pass:     "Eligibility: PASS ✓"
+    eligibility_header:   "Eligibility:"
+    checks:
+      active:
+        pass: "Account active"
+        fail: "Account inactive — contact HR"
+      no_remark:
+        pass: "No HR remark"
+        fail: "HR remark: \"{remark}\""
+      bank:
+        pass: "Bank account linked"
+        fail: "No bank account linked"
+      paycycle_active:
+        pass: "Pay cycle active"
+        fail: "Pay cycle is not active"
+      in_window:
+        pass: "Within withdrawal window"
+        fail: "Outside window or past cutoff"
+      fresh_data:
+        pass: "Data up to date"
+        fail: "Data is outdated"
+
+    factors_header:       "Why your balance is 0 or not updated:"
+    deduction_label:      "Deductions this cycle"
+    deduction_updated:    "(updated {date})"
+    deduction_action:     "→ Contact HR if you think a deduction is incorrect"
+    attendance_header:    "Attendance:"
+    attendance_missing:   "(missing)"
+    more_records_suffix:  "(+{n} more)"
+    action_missing_check: "→ Contact HR to record the missing check_in/out (balance updates on the next sync)"
+
+    suggestions_header:   "Suggestion:"
+
+    all_clear_message: |
+      Everything looks normal — you can tap Withdraw and try as usual.
+      If it still doesn't go through, please close and reopen the app and try again. Let us know if the issue persists.
+
+    api_errors:
+      header:          "⚠️ Some data could not be loaded"
+      token_expired:   "Your session has expired. Please sign in again."
+      profile_fail:    "Could not load your profile ({reason})"
+      balance_fail:    "Could not load your balance ({reason})"
+      attendance_fail: "Could not load your attendance ({reason})"
+      contact_support: "If the problem persists, please contact Salary Hero support."
+
 # ── 1. Normal active user — all systems good ─────────────────────────────────
 normal_active:
   th:
     template: |
-      ตรวจสอบข้อมูลของ {name} แล้ว ทุกอย่างปกติค่ะ สามารถเบิกเงินได้ตามปกติ
+      {balance_line}ตรวจสอบข้อมูลของ {name} แล้ว ทุกอย่างปกติค่ะ สามารถเบิกเงินได้ตามปกติ
 
       ถ้ายังเบิกไม่ได้ ลองทำตามนี้นะคะ:
       1. ปิดแอปแล้วเปิดใหม่
@@ -32,7 +178,7 @@ normal_active:
       3. หากยังไม่ได้แจ้งได้เลยค่ะ
   en:
     template: |
-      Everything for {name} looks good. You should be able to withdraw as normal.
+      {balance_line}Everything for {name} looks good. You should be able to withdraw as normal.
 
       If you still can't withdraw, try these steps:
       1. Close and reopen the app
@@ -43,7 +189,7 @@ normal_active:
 status_inactive:
   th:
     template: |
-      บัญชีของ {name} มีสถานะ "{status}" จึงยังไม่สามารถเบิกเงินได้ค่ะ{status_reason_line}
+      {balance_line}บัญชีของ {name} มีสถานะ "inactive" จึงยังไม่สามารถเบิกเงินได้ค่ะ{remark_line}
 
       วิธีแก้ไข:
       - ติดต่อ HR เพื่อขอเปลี่ยนสถานะเป็น active
@@ -52,17 +198,111 @@ status_inactive:
         2. ลองเช็คดูว่าสถานะอัปเดตหรือยัง
   en:
     template: |
-      {name}'s account is currently "{status}". This is why withdrawals are blocked.{status_reason_line}
+      {balance_line}{name}'s account is currently "inactive". This is why withdrawals are blocked.{remark_line}
 
       What to do:
       - Contact HR and ask them to set your account to active
       - After HR updates, wait for the nightly sync. You'll then be able to withdraw
 
-# ── 3. Account suspended by HR ───────────────────────────────────────────────
+# ── 2b. HR has left a remark on the active profile ───────────────────────────
+has_remark:
+  th:
+    template: |
+      {balance_line}ข้อมูลของคุณมีหมายเหตุจาก HR: "{remark}"
+      ซึ่งอาจเป็นสาเหตุที่จำนวนเงินของคุณไม่อัปเดตหรือเบิกไม่ได้ค่ะ
+
+      วิธีแก้ไข:
+      - ติดต่อ HR เพื่อสอบถามรายละเอียดเพิ่มเติม
+      - หลังจาก HR ดำเนินการแล้ว ลองเปิด-ปิดแอปอีกครั้ง
+  en:
+    template: |
+      {balance_line}HR has left a remark on your profile: "{remark}"
+      This may be why your balance isn't updating or you can't withdraw.
+
+      What to do:
+      - Contact HR for more details on this remark
+      - Once HR resolves it, restart the app to refresh your data
+
+# ── 2c. Paycycle not active ──────────────────────────────────────────────────
+paycycle_inactive:
+  th:
+    template: |
+      {balance_line}รอบจ่ายค่าจ้างของบริษัทยังไม่เปิดใช้งานในขณะนี้ จึงยังไม่สามารถเบิกเงินล่วงหน้าได้ค่ะ{next_start_line}
+
+      วิธีแก้ไข:
+      - รอให้บริษัทเริ่มรอบจ่ายค่าจ้างรอบถัดไป
+      - หากเร่งด่วน ติดต่อ HR ของบริษัทเพื่อตรวจสอบเพิ่มเติม
+  en:
+    template: |
+      {balance_line}The company's pay cycle is not currently active, so salary advance withdrawal isn't available right now.{next_start_line}
+
+      What to do:
+      - Wait for the next pay cycle to open
+      - If urgent, contact your HR team to investigate
+
+# ── 2c-i. Today is outside the paycycle's [start, end] window ────────────────
+outside_paycycle_window:
+  th:
+    template: |
+      {balance_line}ขณะนี้อยู่นอกช่วงวันที่อนุญาตให้เบิกของรอบจ่ายค่าจ้างนี้ค่ะ
+      ระบบจะเปิดให้เบิกอีกครั้งในรอบถัดไป{next_start_line}
+
+      วิธีแก้ไข:
+      - รอจนถึงวันที่รอบจ่ายค่าจ้างรอบถัดไปเริ่มต้น
+      - หากเร่งด่วน ติดต่อ HR ของบริษัทเพื่อสอบถามรายละเอียด
+  en:
+    template: |
+      {balance_line}Today is outside the allowed withdrawal window for this pay cycle.
+      Withdrawals will reopen in the next cycle.{next_start_line}
+
+      What to do:
+      - Wait until the next pay cycle opens
+      - If urgent, contact your HR team
+
+# ── 2c-ii. Within window but past the cutoff time ────────────────────────────
+past_cutoff:
+  th:
+    template: |
+      {balance_line}เลยกำหนดเวลาเบิกของรอบจ่ายค่าจ้างนี้แล้วค่ะ
+      ระบบจะเปิดให้เบิกอีกครั้งในรอบถัดไป{next_start_line}
+
+      วิธีแก้ไข:
+      - รอจนถึงรอบจ่ายค่าจ้างรอบถัดไป
+      - หากเร่งด่วน ติดต่อ HR เพื่อขอความช่วยเหลือ
+  en:
+    template: |
+      {balance_line}The withdrawal cutoff for this pay cycle has already passed.
+      You'll be able to withdraw again starting next cycle.{next_start_line}
+
+      What to do:
+      - Wait for the next pay cycle to open
+      - If urgent, contact your HR team
+
+# ── 2d. HRIS data not yet synced (employee_data_status = outdated) ───────────
+data_outdated:
+  th:
+    template: |
+      {balance_line}ข้อมูลของคุณยังไม่ได้รับการอัปเดตล่าสุดจากบริษัท จำนวนเงินที่แสดงอาจยังไม่เป็นปัจจุบันค่ะ
+
+      วิธีแก้ไข:
+      - ระบบจะอัปเดตข้อมูลอัตโนมัติในรอบถัดไป
+      - รอประมาณ 24 ชั่วโมง แล้วลองตรวจสอบใหม่อีกครั้ง
+      - หากเร่งด่วน ติดต่อ HR ของบริษัทเพื่อขอให้อัปเดตด่วน{sync_line}
+  en:
+    template: |
+      {balance_line}Your data hasn't been synced from the company yet, so the balance shown may not be up to date.
+
+      What to do:
+      - The system will sync automatically on the next scheduled run
+      - Please wait about 24 hours and check again
+      - If urgent, ask HR to trigger a manual sync{sync_line}
+
+# ── 3. Account suspended by HR  ── DEPRECATED ────────────────────────────────
+# Kept for backwards-compat. Real API exposes only status=active|inactive.
 suspended:
   th:
     template: |
-      บัญชีของ {name} มีสถานะ "{status}" จึงยังไม่สามารถเบิกเงินได้ค่ะ{status_reason_line}
+      {balance_line}บัญชีของ {name} มีสถานะ "{status}" จึงยังไม่สามารถเบิกเงินได้ค่ะ{status_reason_line}
 
       วิธีแก้ไข:
       - ติดต่อ HR เพื่อขอเปลี่ยนสถานะเป็น active
@@ -71,24 +311,24 @@ suspended:
         2. ลองเช็คดูว่าสถานะอัปเดตหรือยัง
   en:
     template: |
-      {name}'s account is currently "{status}". This is why withdrawals are blocked.{status_reason_line}
+      {balance_line}{name}'s account is currently "{status}". This is why withdrawals are blocked.{status_reason_line}
 
       What to do:
       - Contact HR and ask them to set your account to active
       - After HR updates, wait for the nightly sync. You'll then be able to withdraw
 
-# ── 4. Blacklisted ───────────────────────────────────────────────────────────
+# ── 4. Blacklisted  ── DEPRECATED ────────────────────────────────────────────
 blacklisted:
   th:
     template: |
-      บัญชีของ {name} ถูกระงับ (blacklist) ชั่วคราว จึงเบิกเงินไม่ได้ค่ะ
+      {balance_line}บัญชีของ {name} ถูกระงับ (blacklist) ชั่วคราว จึงเบิกเงินไม่ได้ค่ะ
 
       วิธีแก้ไข:
       - ติดต่อ HR เพื่อสอบถามสาเหตุและขอปลด blacklist
       - เมื่อ HR ปลดแล้ว จะเบิกเงินได้ทันทีค่ะ
   en:
     template: |
-      {name}'s account is temporarily blacklisted, so you can't withdraw right now.
+      {balance_line}{name}'s account is temporarily blacklisted, so you can't withdraw right now.
 
       What to do:
       - Contact HR to ask why and request removal from the blacklist
@@ -98,14 +338,14 @@ blacklisted:
 has_deductions:
   th:
     template: |
-      ยอดเงินของ {name} ถูกหักรวม {total_deducted} บาทในรอบนี้ จึงทำให้ยอดเบิกได้เป็น 0 ค่ะ
+      {balance_line}ยอดเงินของ {name} ถูกหักรวม {total_deducted} บาทในรอบนี้ จึงทำให้ยอดเบิกได้เป็น 0 ค่ะ
 
       {deductions}
 
       ถ้าคิดว่ามีรายการผิด ติดต่อ HR ให้ช่วยตรวจสอบได้เลยค่ะ
   en:
     template: |
-      {name}'s balance was reduced by {total_deducted} THB in deductions this cycle, bringing it to 0.
+      {balance_line}{name}'s balance was reduced by {total_deducted} THB in deductions this cycle, bringing it to 0.
 
       {deductions}
 
@@ -115,7 +355,7 @@ has_deductions:
 no_bank:
   th:
     template: |
-      ยังไม่พบบัญชีธนาคารที่ผูกกับบัญชีของ {name} ค่ะ
+      {balance_line}ยังไม่พบบัญชีธนาคารที่ผูกกับบัญชีของ {name} ค่ะ
 
       วิธีแก้ไข:
       1. เปิดแอป Salary Hero
@@ -124,7 +364,7 @@ no_bank:
       หากมีปัญหาผูกบัญชีไม่ได้ ติดต่อ HR เพื่อขอความช่วยเหลือค่ะ
   en:
     template: |
-      No bank account is linked to {name}'s profile yet.
+      {balance_line}No bank account is linked to {name}'s profile yet.
 
       What to do:
       1. Open the Salary Hero app
@@ -132,18 +372,19 @@ no_bank:
       3. Fill in your bank account details
       If you have trouble linking your account, contact HR for help.
 
-# ── 7. Bank account not verified ─────────────────────────────────────────────
+# ── 7. Bank account not verified  ── DEPRECATED ──────────────────────────────
+# Kept for backwards-compat. account_verify is no longer a blocker.
 bank_unverified:
   th:
     template: |
-      บัญชีธนาคารของ {name} ยังไม่ผ่านการยืนยัน (สถานะ: {account_verify}) จึงยังเบิกเงินไม่ได้ค่ะ
+      {balance_line}บัญชีธนาคารของ {name} ยังไม่ผ่านการยืนยัน (สถานะ: {account_verify}) จึงยังเบิกเงินไม่ได้ค่ะ
 
       วิธีแก้ไข:
       - ตรวจสอบสถานะยืนยันบัญชีในแอป Salary Hero
       - หากรอนานแล้วยังไม่ยืนยัน ติดต่อ HR เพื่อขอความช่วยเหลือค่ะ
   en:
     template: |
-      {name}'s bank account is not yet verified (status: {account_verify}).
+      {balance_line}{name}'s bank account is not yet verified (status: {account_verify}).
 
       What to do:
       - Check the account verification status in the Salary Hero app
@@ -153,7 +394,7 @@ bank_unverified:
 attendance_remark:
   th:
     template: |
-      พบข้อมูลเข้า-ออกงานของ {name} ไม่สมบูรณ์ อาจทำให้ยอดเงินไม่ถูกต้องค่ะ
+      {balance_line}พบข้อมูลเข้า-ออกงานของ {name} ไม่สมบูรณ์ อาจทำให้ยอดเงินไม่ถูกต้องค่ะ
 
       {attendance_table}
 
@@ -162,7 +403,7 @@ attendance_remark:
       - หลัง HR แก้ไข รอระบบซิงค์คืนนี้ ยอดเงินจะอัปเดตค่ะ
   en:
     template: |
-      {name} has incomplete check-in/out records, which may cause the balance to be wrong.
+      {balance_line}{name} has incomplete check-in/out records, which may cause the balance to be wrong.
 
       {attendance_table}
 
@@ -170,11 +411,11 @@ attendance_remark:
       - Ask HR to check and fix any missing or flagged entries
       - After HR updates, wait for tonight's sync. The balance will update
 
-# ── 9. Sync pending ───────────────────────────────────────────────────────────
+# ── 9. Sync pending  ── LEGACY (mock only) ───────────────────────────────────
 sync_pending:
   th:
     template: |
-      ยอดเงินของ {name} ยังไม่อัปเดต เพราะระบบกำลังซิงค์ข้อมูลเงินเดือนค่ะ
+      {balance_line}ยอดเงินของ {name} ยังไม่อัปเดต เพราะระบบกำลังซิงค์ข้อมูลเงินเดือนค่ะ
 
       - ซิงค์ล่าสุด: {last_sync}
       - ซิงค์ถัดไป: {next_sync}
@@ -183,7 +424,7 @@ sync_pending:
       ถ้าต้องการด่วน แจ้ง HR หรือแอดมินให้ช่วยซิงค์ได้เลยค่ะ
   en:
     template: |
-      {name}'s balance hasn't updated yet because payroll sync is in progress.
+      {balance_line}{name}'s balance hasn't updated yet because payroll sync is in progress.
 
       - Last sync: {last_sync}
       - Next sync: {next_sync}

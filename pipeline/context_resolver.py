@@ -216,7 +216,17 @@ def _interpret(
     if _is_handoff_request(message):
         return FlowAction.TRIGGER_HANDOFF, "user_requested_handoff", active_intent
 
-    # ── awaiting_confirmation: resolver handles yes/no only ───────────────────
+    # ── awaiting_confirmation ─────────────────────────────────────────────────
+    # The resolver no longer keyword-matches "no" responses here. Substring
+    # checks like "ไม่ได้" wrongly fired on new questions such as
+    # "ทำไมเบิกเงินไม่ได้". The LLM router (which sees the active context) is
+    # the single source of truth for whether the message is a continuation
+    # ("ยังพบปัญหา"), a new query, or chitchat. The orchestrator's followup
+    # branch then bumps retry_count when the user stays on the same sub_type.
+    #
+    # We keep the explicit "yes" shortcut because acknowledgements like
+    # "ครับ"/"ขอบคุณ" are unambiguous, short, and need to mark the context
+    # resolved without an extra LLM round-trip.
     if status == "awaiting_confirmation":
         age = _confirmation_age_minutes(active_context)
         if age > MAX_CONFIRMATION_AGE_MINUTES:
@@ -225,9 +235,6 @@ def _interpret(
 
         if _is_yes(message):
             return FlowAction.END_FLOW, "awaiting_confirmation_yes_word", active_intent
-        if _is_no(message):
-            return FlowAction.TRIGGER_HANDOFF, "awaiting_confirmation_no_word", active_intent
-        # Other reply → LLM router decides
         return FlowAction.NEW, "awaiting_confirmation_other", active_intent
 
     # ── Normal turn — goodbye words are the only deterministic early exit ─────

@@ -148,6 +148,13 @@ Intent rules:
   faq = generic knowledge / how-to / conditions / errors — everything else
   missing_info = message too vague to classify (preamble-only with NO question, single word, no topic)
   preamble-only (สอบถามหน่อย / ขอถามหน่อย / อยากสอบถาม with NO question after) → missing_info, is_new=true
+
+  IMPORTANT — awaiting_confirmation continuation rule:
+    When active context status = "awaiting_confirmation" AND the user replies with
+    a short ambiguous message that doesn't itself introduce a new topic (examples:
+    "เจออยู่", "ก็ยังนะ", "เหมือนเดิม", "ยังเลย", "ไม่ได้อยู่ดี", "เป็นเหมือนเดิม"),
+    classify it as a CONTINUATION of the active sub_type with is_new=false.
+    DO NOT classify these as missing_info — the active context provides the topic.
   greeting+question OR preamble+question → classify by the question content
   how-to questions (ยังไง / อย่างไร / วิธี / ขั้นตอน / how to) → faq, is_new=true always
   unsure troubleshooting subtype → troubleshooting_withdrawal

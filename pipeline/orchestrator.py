@@ -357,6 +357,32 @@ def handle_message(
     # actually counts upward. Without this, every paraphrase ("ยังเจออยู่",
     # "เจอยังไง") that the LLM marks is_new=True wipes the context and resets
     # retry_count to 0, making escalation unreachable.
+    # Safety net: short ambiguous replies like "เจออยู่" / "ก็ยังนะ" while a
+    # troubleshooting topic is awaiting_confirmation should be treated as
+    # continuation, not "please clarify". The router will mark these is_new=False.
+    #
+    # IMPORTANT: when the router says is_new=True (fresh preamble like
+    # "สอบถามหน่อย" / "ขอถามอะไรหน่อย"), respect it — the user is starting a new
+    # ask, not answering the confirmation prompt. Don't coerce those.
+    if (
+        decision.route == Route.MISSING_INFO
+        and not decision.is_new
+        and active_ctx
+        and active_ctx.get("intent") == "troubleshooting"
+        and active_ctx.get("status") == "awaiting_confirmation"
+    ):
+        active_sub_type = active_ctx.get("sub_type", "troubleshooting_withdrawal")
+        _logger.info(
+            f"[orchestrator] LLM said missing_info (is_new=False) but troubleshooting is "
+            f"awaiting_confirmation → coercing to {active_sub_type} continuation"
+        )
+        decision.route = (
+            Route.TROUBLESHOOTING if active_sub_type == "troubleshooting_withdrawal"
+            else Route.FAQ
+        )
+        decision.template_key = active_sub_type
+        decision.is_new = False
+
     same_troubleshooting_topic = (
         decision.route == Route.TROUBLESHOOTING
         and active_ctx
@@ -542,6 +568,21 @@ def handle_message(
             f"[orchestrator] troubleshooting → appended confirmation "
             f"(retry={retry_count}, with_transfer={with_transfer})"
         )
+
+    # ── Reset stale retry_count when the user moves off troubleshooting ──────
+    # If the user previously bumped retry_count (recheck loop) and then sends
+    # a chitchat or generic FAQ turn, that loop is over. Clearing the counter
+    # now means the NEXT troubleshooting question starts fresh at retry=0
+    # instead of inheriting a high count that would prematurely show the
+    # transfer-to-agent option.
+    if decision.route in (Route.CHITCHAT, Route.MISSING_INFO, Route.FAQ):
+        latest_ctx = ac.load(tenant_id, user_id) or {}
+        if latest_ctx.get("retry_count", 0) > 0:
+            _logger.info(
+                f"[orchestrator] non-troubleshooting turn ({decision.route.value}) "
+                f"→ resetting stale retry_count from {latest_ctx['retry_count']} to 0"
+            )
+            ac.patch(tenant_id, user_id, retry_count=0)
 
     # ── Persist ───────────────────────────────────────────────────────────────
     save_turn(tenant_id, user_id, language, message, answer.text)

@@ -36,7 +36,10 @@ logging.basicConfig(
 _logger = logging.getLogger("gradio_app")
 
 TENANT_ID   = "happy_nest_space"
-EMPLOYEE_ID = "EMP001"
+# Default to a non-legacy id so the mock path uses the editable
+# `_mock_data.py` fixture (edit one file to test any scenario).
+# Use "EMP001" etc. only when you specifically want the old users.json fixtures.
+EMPLOYEE_ID = "mock_user"
 
 # Module-level committed state — avoids Gradio state propagation race conditions
 # when two process_messages calls are queued back-to-back.
@@ -59,12 +62,18 @@ def _read_last_trace() -> str:
     return blocks[-1] if blocks else "(empty log)"
 
 
-def _call_pipeline(message: str, tenant_id: str, employee_id: str) -> tuple[str, str]:
+def _call_pipeline(
+    message: str, tenant_id: str, employee_id: str, token: str = "",
+) -> tuple[str, str]:
+    # When a bearer token is set, the employee_data tool routes to the real
+    # API (EmployeeDataClient). Otherwise it uses the mock client driven by
+    # `employee_id`. See agent/tools/employee_data.py for the selection logic.
     result = handle_message(
         tenant_id=tenant_id,
         user_id=employee_id,
         message=message,
         employee_id=employee_id,
+        access_token=token,
     )
     answer = result.answer
     if result.image_urls and not result.was_escalated:
@@ -77,13 +86,125 @@ def build_demo() -> gr.Blocks:
         gr.Markdown("## CS Chatbot Agent — Test UI")
         gr.Markdown(
             "**FAQ:** ask any general question.  \n"
-            "**Troubleshooting:** use keywords like `เบิกไม่ได้` / `ยอด 0` — set Employee ID below.  \n"
+            "**Troubleshooting:** use keywords like `เบิกไม่ได้` / `ยอด 0`.  \n"
+            "**Auth:** paste a Bearer Token below — the BE derives the user from it.  \n"
             "**Multi-message:** type quickly — if Q2 arrives while Q1 is processing, they combine into one answer."
         )
 
-        with gr.Row():
-            tenant_input = gr.Textbox(value=TENANT_ID,   label="Tenant ID",   scale=1)
-            emp_input    = gr.Textbox(value=EMPLOYEE_ID, label="Employee ID (for troubleshooting)", scale=1)
+        tenant_input = gr.Textbox(value=TENANT_ID, label="Tenant ID")
+        # Real-API only — BE resolves user_id from the Bearer token. The hidden
+        # State below feeds a placeholder employee_id into the pipeline because
+        # the handler signatures still take one (used for memory/session keys).
+        emp_input = gr.State(EMPLOYEE_ID)
+        token_input = gr.Textbox(
+            value="",
+            label="Bearer Token (required — real API call)",
+            placeholder="paste a Firebase Bearer token",
+            lines=2,
+            type="password",
+        )
+        def test_api_call(token: str) -> str:
+            """
+            One-shot probe of all 3 real-API endpoints with the given token.
+            Profile + balance fire in parallel (both independent); attendance
+            then runs using profile.paycycle.start → today as the date range.
+            """
+            import json, time
+            from datetime import date, timedelta
+            from concurrent.futures import ThreadPoolExecutor
+            if not token.strip():
+                return "❌ No token provided.\n\nPaste a fresh Bearer token above and click again."
+
+            tok    = token.strip()
+            result: dict = {}
+
+            # ── Phase 1: Profile + Balance in parallel ───────────────────────
+            from agent.clients.employee_data_client import EmployeeDataClient, API_BASE_URL
+            from agent.clients.balance_client       import BalanceClient
+
+            def _profile():
+                t0 = time.perf_counter()
+                data = EmployeeDataClient(token=tok, language="en").get_employee_data()
+                return round((time.perf_counter() - t0) * 1000, 1), data
+
+            def _balance():
+                t0 = time.perf_counter()
+                data = BalanceClient(token=tok, language="en").get_balance()
+                return round((time.perf_counter() - t0) * 1000, 1), data
+
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                fut_p = pool.submit(_profile)
+                fut_b = pool.submit(_balance)
+
+                try:
+                    ms_p, prof = fut_p.result(timeout=15)
+                    result["profile_call"] = {
+                        "_status":         "OK",
+                        "_url":            f"{API_BASE_URL}/api/v1/user/account/chatbot/profile",
+                        "_latency_ms":     ms_p,
+                        "user_id":         prof.employee_id,
+                        "remaining_count": prof.remaining_count,
+                        "profile":         prof.profile,
+                        "company":         prof.company,
+                        "bank_account":    prof.bank_account,
+                        "paycycle":        prof.paycycle,
+                        "deductions":      prof.deductions,
+                        "sync":            prof.sync,
+                    }
+                except Exception as e:
+                    result["profile_call"] = {
+                        "_status": "ERROR", "_type": type(e).__name__,
+                        "_error":  str(e),
+                        "_body":   getattr(getattr(e, "response", None), "text", "")[:500],
+                    }
+                    prof = None
+
+                try:
+                    ms_b, bal = fut_b.result(timeout=15)
+                    result["balance_call"] = {
+                        "_status":     "OK",
+                        "_url":        f"{API_BASE_URL}/api/v1/user/ewa/balance/withdraw",
+                        "_latency_ms": ms_b,
+                        "earned_avaliable_amount": bal.get("earned_avaliable_amount"),
+                        "status":      bal.get("status"),
+                    }
+                except Exception as e:
+                    result["balance_call"] = {
+                        "_status": "ERROR", "_type": type(e).__name__,
+                        "_error":  str(e),
+                        "_body":   getattr(getattr(e, "response", None), "text", "")[:500],
+                    }
+
+            if prof is None:
+                return json.dumps(result, ensure_ascii=False, indent=2)
+
+            # ── Phase 2: Attendance (needs profile.paycycle.start) ───────────
+            paycycle_start = (prof.paycycle or {}).get("start") or ""
+            date_from = paycycle_start[:10] if paycycle_start else (date.today() - timedelta(days=7)).isoformat()
+            date_to   = date.today().isoformat()
+            try:
+                from agent.clients.attendance_client import AttendanceClient
+                t0 = time.perf_counter()
+                att = AttendanceClient(token=tok, language="en").get_attendance(
+                    date_from=date_from, date_to=date_to,
+                )
+                ms = round((time.perf_counter() - t0) * 1000, 1)
+                result["attendance_call"] = {
+                    "_status":      "OK",
+                    "_url":         f"{API_BASE_URL}/api/v1/user/account/chatbot/attendance",
+                    "_latency_ms":  ms,
+                    "date_from":    date_from,
+                    "date_to":      date_to,
+                    "record_count": len(att.get("records", [])),
+                    "records":      att.get("records", []),
+                }
+            except Exception as e:
+                result["attendance_call"] = {
+                    "_status": "ERROR", "_type": type(e).__name__,
+                    "_error":  str(e),
+                    "_body":   getattr(getattr(e, "response", None), "text", "")[:500],
+                }
+            return json.dumps(result, ensure_ascii=False, indent=2)
 
         chatbot          = gr.Chatbot(label="Conversation", height=500, render_markdown=True)
         committed_state  = gr.State([])   # completed [user, bot] turns — source of truth for history
@@ -104,6 +225,21 @@ def build_demo() -> gr.Blocks:
                 language=None,
                 interactive=False,
                 lines=28,
+            )
+
+        with gr.Accordion("🔌 Test API call (probe real endpoints)", open=False):
+            with gr.Row():
+                test_api_btn = gr.Button("Run probe", variant="secondary", scale=1)
+            api_test_output = gr.Code(
+                label="Last API call result (status + payload preview)",
+                language="json",
+                value="",
+                lines=12,
+            )
+            test_api_btn.click(
+                test_api_call,
+                inputs=[token_input],
+                outputs=[api_test_output],
             )
 
         def enqueue_msg(message, image_path, chatbot_state, committed, tenant_id, employee_id):
@@ -134,7 +270,7 @@ def build_demo() -> gr.Blocks:
 
             return chatbot_state + new_turns, "", None, committed
 
-        def process_messages(committed, tenant_id, employee_id):
+        def process_messages(committed, tenant_id, employee_id, token):
             """
             Phase 2: claim pending batch, run pipeline, update chat.
 
@@ -169,7 +305,7 @@ def build_demo() -> gr.Blocks:
                     )
                 else:
                     combined = "\n".join(messages)
-                    reply, trace = _call_pipeline(combined, tenant_id, employee_id)
+                    reply, trace = _call_pipeline(combined, tenant_id, employee_id, token=token)
 
                 if not is_current(tenant_id, employee_id, gen):
                     _logger.info(f"[process_messages] gen={gen} NOT current — combining with pending and retrying")
@@ -201,7 +337,7 @@ def build_demo() -> gr.Blocks:
 
         _enqueue_inputs  = [msg_input, img_input, chatbot, committed_state, tenant_input, emp_input]
         _enqueue_outputs = [chatbot, msg_input, img_input, committed_state]
-        _process_inputs  = [committed_state, tenant_input, emp_input]
+        _process_inputs  = [committed_state, tenant_input, emp_input, token_input]
         _process_outputs = [chatbot, trace_box, committed_state]
 
         send_btn.click(

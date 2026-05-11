@@ -10,10 +10,12 @@ Tools are called in a fixed order based on sub-type — no ReAct agent needed.
 evidence.py then determines root_cause and picks the answer template.
 """
 
+import json
 import logging
 
 from agent.tools.employee_data import get_employee_data
 from agent.tools.attendance import get_attendance
+from agent.tools.balance import get_balance
 from agent.tools._token import set_token
 from agent.evidence import (
     build_diagnostic_context, format_for_llm, get_filled_template,
@@ -21,19 +23,18 @@ from agent.evidence import (
 
 _logger = logging.getLogger("agent.planner")
 
-# Sub-type → which tools to call (in order).
-# Today only `withdrawal` reaches the planner with active tools. Other
-# troubleshooting_* labels are routed to FAQ first in pipeline/router.py;
-# they're kept here as placeholders (empty = no-op) so that adding API
-# escalation later is one line per subtype without redesigning the planner.
+# Sub-type → which tools to call.
+# `get_employee_data` and `get_balance` run in PARALLEL (independent, both
+# derive user from token). `get_attendance` runs AFTER `get_employee_data`
+# because its date_from depends on profile's paycycle.start.
 _TOOL_STRATEGY: dict[str, list[str]] = {
-    "troubleshooting_withdrawal":        ["get_employee_data", "get_attendance"],
+    "troubleshooting_withdrawal":        ["get_employee_data", "get_balance", "get_attendance"],
     "troubleshooting_signup":            [],   # FAQ first; escalate later if needed
     "troubleshooting_cant_find_company": [],   # FAQ first; escalate later if needed
     "troubleshooting_money_not_arrived": [],   # FAQ first; escalate later if needed
     "troubleshooting_cant_receive_otp":  [],   # FAQ only — no API ever
 }
-_DEFAULT_STRATEGY = ["get_employee_data", "get_attendance"]
+_DEFAULT_STRATEGY = ["get_employee_data", "get_balance", "get_attendance"]
 
 
 def run_troubleshooting_agent(
@@ -71,21 +72,44 @@ def run_troubleshooting_agent(
 
     tool_outputs: dict[str, str] = {}
 
-    for tool_name in strategy:
+    # Phase 1: run profile + balance in parallel. Both are independent (BE
+    # derives the user from the token) so we save ~1s vs serial execution.
+    from concurrent.futures import ThreadPoolExecutor
+    parallel_jobs: dict[str, callable] = {}
+    if "get_employee_data" in strategy:
+        parallel_jobs["get_employee_data"] = lambda: get_employee_data.invoke(
+            {"employee_id": employee_id}
+        )
+    if "get_balance" in strategy:
+        parallel_jobs["get_balance"] = lambda: get_balance.invoke(
+            {"employee_id": employee_id}
+        )
+
+    if parallel_jobs:
+        with ThreadPoolExecutor(max_workers=len(parallel_jobs)) as pool:
+            futures = {name: pool.submit(fn) for name, fn in parallel_jobs.items()}
+            for name, fut in futures.items():
+                try:
+                    tool_outputs[name] = fut.result(timeout=15)
+                except Exception as exc:
+                    _logger.warning(f"[planner] tool {name} failed for {employee_id}: {exc}")
+                    # Persist the failure so evidence.py can surface a "data
+                    # not available" warning instead of rendering a misleading
+                    # empty section.
+                    tool_outputs[name] = json.dumps({"error": f"{type(exc).__name__}: {exc}"})
+
+    # Phase 2: attendance depends on profile.paycycle.start, so it runs after.
+    if "get_attendance" in strategy:
         try:
-            if tool_name == "get_employee_data":
-                tool_outputs["get_employee_data"] = get_employee_data.invoke(
-                    {"employee_id": employee_id}
-                )
-            elif tool_name == "get_attendance":
-                from datetime import date
-                date_from = _extract_paycycle_start(tool_outputs.get("get_employee_data", ""))
-                date_to   = date.today().isoformat()
-                tool_outputs["get_attendance"] = get_attendance.invoke(
-                    {"employee_id": employee_id, "date_from": date_from, "date_to": date_to}
-                )
+            from datetime import date
+            date_from = _extract_paycycle_start(tool_outputs.get("get_employee_data", ""))
+            date_to   = date.today().isoformat()
+            tool_outputs["get_attendance"] = get_attendance.invoke(
+                {"employee_id": employee_id, "date_from": date_from, "date_to": date_to}
+            )
         except Exception as exc:
-            _logger.warning(f"[planner] tool {tool_name} failed for {employee_id}: {exc}")
+            _logger.warning(f"[planner] tool get_attendance failed for {employee_id}: {exc}")
+            tool_outputs["get_attendance"] = json.dumps({"error": f"{type(exc).__name__}: {exc}"})
 
     # Safety net — always need employee_data
     if "get_employee_data" not in tool_outputs:

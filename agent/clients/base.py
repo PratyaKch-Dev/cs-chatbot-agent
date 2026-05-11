@@ -69,20 +69,24 @@ class EmployeeData:
     """
     Unified employee data — returned by the Profile API or mock.
 
-    Real API fields (GET /api/user/profile):
-        remaining_count  — withdrawal eligibility (>0 = can withdraw)
-        profile          — status, status_reason, remark, user_id, company_id
-        company          — name, status
-        bank_account     — bank_code, account_no, account_verify, …
-        paycycle         — paycycle_status, start, cutoff, end, next_start
-        deductions       — total_deducted, deductions_updated_at
-        sync             — sync_type, schedules (list)
+    Real API fields (GET /api/v1/user/account/chatbot/profile):
+        remaining_count       — withdrawal eligibility (>0 = can withdraw)
+        employee_data_status  — "up_to_date" | "outdated" (HRIS sync freshness)
+        profile               — status ("active"|"inactive"), metadata.remark,
+                                user_id, company_id
+        company               — name, status
+        bank_account          — bank_code, account_no, account_name, …
+                                (account_verify no longer used as a blocker)
+        paycycle              — paycycle_status, start, cutoff, end, next_start
+        deductions            — total_deducted, deductions_updated_at
+        sync                  — sync_type, schedules (list, may be empty)
 
     Mock-only fields:
         attendance_snapshot — filtered attendance records (last 7 days)
     """
     employee_id: str
     remaining_count: int = 0
+    employee_data_status: str = "up_to_date"   # "up_to_date" | "outdated"
     profile: dict = field(default_factory=dict)
     company: dict = field(default_factory=dict)
     bank_account: dict = field(default_factory=dict)

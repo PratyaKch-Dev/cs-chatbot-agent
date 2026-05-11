@@ -1,11 +1,28 @@
-"""Mock unified employee data client — reads users.json (new API structure)."""
+"""Mock unified employee data client.
+
+Reads from the editable fixture at `agent/clients/mock/_mock_data.py` (the
+real-API-shape mock you can flip fields on without restarting).
+Falls back to the legacy `users.json` keyed by employee_id when the caller
+passes one of the historical mock ids (EMP00X) — needed by old test scripts.
+"""
 
 from datetime import date, timedelta, datetime
 
 from agent.clients.base import BaseEmployeeDataClient, EmployeeData
-from agent.clients.mock.data_loader import get_user
+from agent.clients.mock.data_loader import get_user, load_mock_users
+from agent.clients.mock import _mock_data
 
 _SNAPSHOT_DAYS = 7
+
+
+def _is_legacy_emp_id(employee_id: str) -> bool:
+    """True when employee_id matches an EMP00X key in the legacy users.json."""
+    if not employee_id:
+        return False
+    try:
+        return employee_id in load_mock_users()
+    except Exception:
+        return False
 
 
 def _parse_iso_date(iso: str | None) -> date | None:
@@ -23,7 +40,12 @@ def _parse_iso_date(iso: str | None) -> date | None:
 
 class MockEmployeeDataClient(BaseEmployeeDataClient):
     def get_employee_data(self, employee_id: str = "") -> EmployeeData:
-        raw = get_user(employee_id)
+        # Prefer the editable real-shape fixture unless the caller is using a
+        # legacy EMP00X id (those still resolve from users.json for back-compat).
+        if _is_legacy_emp_id(employee_id):
+            raw = get_user(employee_id)
+        else:
+            raw = _mock_data.get_profile()
 
         paycycle     = raw.get("paycycle", {})
         att_raw      = raw.get("_mock_attendance", {})
