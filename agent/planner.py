@@ -32,7 +32,7 @@ _TOOL_STRATEGY: dict[str, list[str]] = {
     "troubleshooting_signup":            [],   # FAQ first; escalate later if needed
     "troubleshooting_cant_find_company": [],   # FAQ first; escalate later if needed
     "troubleshooting_money_not_arrived": [],   # FAQ first; escalate later if needed
-    "troubleshooting_cant_receive_otp":  [],   # FAQ only — no API ever
+    "troubleshooting_cant_receive_otp":  [],   # FAQ first; escalate later if needed
 }
 _DEFAULT_STRATEGY = ["get_employee_data", "get_balance", "get_attendance"]
 
@@ -66,23 +66,35 @@ def run_troubleshooting_agent(
     strategy = _TOOL_STRATEGY.get(sub_type, _DEFAULT_STRATEGY)
     _logger.info(f"[planner] {employee_id} | sub_type={sub_type!r} | tools={strategy}")
 
-    # Inject token so the tool picks up the real client when token is present
+    # Inject token in the main thread (used by Phase 2 attendance which runs
+    # synchronously below). The parallel workers below set the token again
+    # inside their own threads — `ContextVar` does not auto-propagate into
+    # ThreadPoolExecutor workers, so without per-worker re-set the tools would
+    # silently fall back to the mock client.
     if access_token:
         set_token(access_token)
 
     tool_outputs: dict[str, str] = {}
+
+    def _with_token(fn):
+        """Wrap a worker so it re-installs the token in its own thread."""
+        def _runner():
+            if access_token:
+                set_token(access_token)
+            return fn()
+        return _runner
 
     # Phase 1: run profile + balance in parallel. Both are independent (BE
     # derives the user from the token) so we save ~1s vs serial execution.
     from concurrent.futures import ThreadPoolExecutor
     parallel_jobs: dict[str, callable] = {}
     if "get_employee_data" in strategy:
-        parallel_jobs["get_employee_data"] = lambda: get_employee_data.invoke(
-            {"employee_id": employee_id}
+        parallel_jobs["get_employee_data"] = _with_token(
+            lambda: get_employee_data.invoke({"employee_id": employee_id})
         )
     if "get_balance" in strategy:
-        parallel_jobs["get_balance"] = lambda: get_balance.invoke(
-            {"employee_id": employee_id}
+        parallel_jobs["get_balance"] = _with_token(
+            lambda: get_balance.invoke({"employee_id": employee_id})
         )
 
     if parallel_jobs:

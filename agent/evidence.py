@@ -952,17 +952,30 @@ def _ts_section_suggestions(emp: dict, bal: dict, att: dict, lang: str) -> str:
     if total > 0:
         suggestions.append(s.get("deduction_action", ""))
 
-    # §3 — any attendance row with missing punch or remark
-    has_att_issue = False
+    # §3 — attendance issues. We surface two distinct suggestions:
+    #   1. action_attendance_remark — names the specific date(s) that carry
+    #      a remark (HR note, system flag, late, etc.). The remark text is
+    #      free-form, so we don't quote it; we just point the user at HR.
+    #   2. action_missing_check — fires for rows that are missing a punch
+    #      WITHOUT a remark (a missing punch with a remark is already
+    #      explained by the remark itself — covered by #1).
+    remark_dates: list[str] = []
+    missing_only = False
     for r in (att or {}).get("records", []) or []:
         ci = (r.get("check_in") or "")[:5]
         co = (r.get("check_out") or "")[:5]
         rmd = r.get("metadata") or {}
         rrem = (rmd.get("remark") if isinstance(rmd, dict) else None) or r.get("remarks")
-        if (not ci) or (not co) or rrem:
-            has_att_issue = True
-            break
-    if has_att_issue:
+        if rrem:
+            remark_dates.append(_fmt_date_short(r.get("date", ""), lang))
+        elif (not ci) or (not co):
+            missing_only = True
+
+    if remark_dates:
+        tmpl = s.get("action_attendance_remark", "")
+        if tmpl:
+            suggestions.append(tmpl.format(dates=", ".join(remark_dates)))
+    if missing_only:
         suggestions.append(s.get("action_missing_check", ""))
 
     # Dedupe while preserving order; strip empties.
@@ -1098,7 +1111,21 @@ def _ts_section_balance_factors(emp: dict, att: dict, lang: str) -> str:
     max_show = 31
     missing_label = s.get("attendance_missing", "(missing)")
 
-    out: list[str] = [s.get("factors_header", ""), ""]
+    # Remark hint — if any record carries a remark (HR note, system flag,
+    # "ลืม check in", etc.), prepend a one-line cue under the §3 header so
+    # the user understands why the balance may not be updating. The remark
+    # text itself is rendered next to its row in the attendance table below.
+    def _rec_remark(r):
+        md = r.get("metadata") or {}
+        return (md.get("remark") if isinstance(md, dict) else None) or r.get("remarks")
+    has_any_remark = any(_rec_remark(r) for r in records)
+
+    out: list[str] = [s.get("factors_header", "")]
+    if has_any_remark:
+        hint = s.get("attendance_remark_hint", "")
+        if hint:
+            out.append(hint)
+    out.append("")
 
     deduct_line = f"{s.get('deduction_label', '')}: {total:,.0f} {s.get('balance_unit', '')}"
     if updated_str:

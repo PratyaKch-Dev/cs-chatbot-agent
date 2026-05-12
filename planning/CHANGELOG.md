@@ -35,3 +35,4 @@ Add a new file here each time something is updated — never edit old entries.
 | [020](changes/020_router_v3_smart_retrieval_pinned_faq_user_handoff.md) | 2026-05-11 | Router v3: Smart FAQ Retrieval, Pinned Articles & User-Controlled Handoff | refactor | 3 |
 | [021](changes/021_llm_handoff_intent_classification.md) | 2026-05-11 | LLM `handoff_request` Intent Classification | refactor + fix | 3 |
 | [022](changes/022_real_api_withdrawal_flow_and_unified_diagnostic.md) | 2026-05-12 | Real-API Withdrawal Flow, Unified Diagnostic & Routing Fixes | feature + refactor + fix | 3 |
+| [023](changes/023_faq_backed_troubleshooting_flow_and_polish.md) | 2026-05-12 | FAQ-Backed Troubleshooting Flow, Token Propagation Fix & UX Polish | refactor + fix + feature | 3 |

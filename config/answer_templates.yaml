@@ -85,13 +85,21 @@ withdrawal_diagnostic:
 
     # §3 — balance factors + attendance table (data only, no inline actions)
     factors_header:        "ทำไมยอดเงินถึงยังไม่ขึ้น หรือเบิกไม่ได้:"
+    # Shown right under the §3 header when ANY attendance row has a remark
+    # (system note, late, missed check-in, etc.). Remark text is free-form
+    # from HR/system, so we don't quote it here — just hint that it exists.
+    attendance_remark_hint: "อาจเป็นเพราะมีหมายเหตุในวันที่เข้า-ออกงาน ทำให้ยอดเงินไม่อัปเดต"
     deduction_label:       "หักเงินรอบนี้"            # "{deduction_label}: {amount} {balance_unit}"
     deduction_updated:     "(ข้อมูลล่าสุด {date})"
     deduction_action:      "→ ติดต่อ HR หากคิดว่ามีรายการหักผิดพลาด"
     attendance_header:     "รายการเข้า-ออกงาน:"
     attendance_missing:    "(ไม่มี)"
     more_records_suffix:   "(+{n} more)"
-    action_missing_check:  "→ ติดต่อ HR ให้บันทึก check_in/out ย้อนหลัง (ยอดจะอัปเดตในรอบ sync ถัดไป)"
+    action_missing_check:  "→ ติดต่อ HR ให้บันทึกเวลาเข้า-ออกงานย้อนหลัง (ยอดจะอัปเดตในรอบถัดไป)"
+    # Surfaced when one or more attendance rows have a remark (any free-form
+    # text from HR). {dates} = comma-separated list of the dates that carry
+    # a remark, formatted as Thai short date (e.g. "12 พ.ค. 2026").
+    action_attendance_remark: "→ วันที่ {dates} อาจไม่ได้อัปเดตจำนวนเงินเพราะมีหมายเหตุจาก HR — ติดต่อ HR เพื่อสอบถามรายละเอียด"
 
     # §4 — unified suggestion block, shown in every scenario
     suggestions_header: "คำแนะนำ:"
@@ -144,6 +152,7 @@ withdrawal_diagnostic:
         fail: "Data is outdated"
 
     factors_header:       "Why your balance is 0 or not updated:"
+    attendance_remark_hint: "There may be a remark on one of your attendance days, which can delay the balance update."
     deduction_label:      "Deductions this cycle"
     deduction_updated:    "(updated {date})"
     deduction_action:     "→ Contact HR if you think a deduction is incorrect"
@@ -151,6 +160,7 @@ withdrawal_diagnostic:
     attendance_missing:   "(missing)"
     more_records_suffix:  "(+{n} more)"
     action_missing_check: "→ Contact HR to record the missing check_in/out (balance updates on the next sync)"
+    action_attendance_remark: "→ The balance for {dates} may not have updated because HR added a remark — contact HR for details"
 
     suggestions_header:   "Suggestion:"
 

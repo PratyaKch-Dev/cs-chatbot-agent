@@ -66,15 +66,18 @@ _LABEL_TO_ROUTE: dict[str, Route] = {
     "frustrated":          Route.CHITCHAT,
     "confused":            Route.CHITCHAT,
     "missing_info":                      Route.MISSING_INFO,
-    # Only `withdrawal` actually needs live API data (balance/eligibility/sync).
-    # Others route to FAQ — answers exist in the FAQ catalog (signup steps,
-    # company search, money-not-arrived guidance, OTP 3-step troubleshooting).
-    # The label is preserved as template_key for analytics in the trace.
+    # All troubleshooting_* labels route to TROUBLESHOOTING so they get the
+    # same UX: pinned/agent answer → confirmation prompt → recheck loop →
+    # explicit "transfer to agent" option after MAX retries. Only `withdrawal`
+    # currently has live API tooling; the others are FAQ-backed for now
+    # (answer source = pinned FAQ article) and will scale to hybrid later.
+    # The orchestrator dispatches FAQ-backed sub_types to `_run_faq` while
+    # still applying the troubleshooting scaffolding.
     "troubleshooting_withdrawal":        Route.TROUBLESHOOTING,
-    "troubleshooting_signup":            Route.FAQ,
-    "troubleshooting_cant_find_company": Route.FAQ,
-    "troubleshooting_money_not_arrived": Route.FAQ,
-    "troubleshooting_cant_receive_otp":  Route.FAQ,
+    "troubleshooting_signup":            Route.TROUBLESHOOTING,
+    "troubleshooting_cant_find_company": Route.TROUBLESHOOTING,
+    "troubleshooting_money_not_arrived": Route.TROUBLESHOOTING,
+    "troubleshooting_cant_receive_otp":  Route.TROUBLESHOOTING,
     "faq":                               Route.FAQ,
     # Explicit user request to talk to a human / be transferred. Classified by
     # the LLM router from any wording ("โอน", "คุยกับคน", "talk to agent",

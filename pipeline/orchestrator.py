@@ -76,9 +76,29 @@ class StageInput:
 _logger = logging.getLogger("pipeline.orchestrator")
 
 _TS_TOPIC = {
-    "troubleshooting_withdrawal": "withdrawal_issue",
-    # Add new subtypes here when ready: "troubleshooting_payslip": "payslip_issue", etc.
+    "troubleshooting_withdrawal":        "withdrawal_issue",
+    "troubleshooting_signup":            "signup_issue",
+    "troubleshooting_cant_find_company": "company_search_issue",
+    "troubleshooting_money_not_arrived": "money_not_arrived_issue",
+    "troubleshooting_cant_receive_otp":  "otp_issue",
 }
+
+# Troubleshooting sub_types whose ANSWER comes from FAQ retrieval (no live
+# API tooling). The orchestrator routes these through `_run_faq` for the
+# answer but still applies the standard troubleshooting scaffolding —
+# confirmation prompt → recheck loop → handoff option — so the UX matches
+# `troubleshooting_withdrawal`. Move a sub_type out of this set when its
+# real-API integration lands.
+_FAQ_BACKED_TS_SUBTYPES = {
+    "troubleshooting_signup",
+    "troubleshooting_cant_find_company",
+    "troubleshooting_money_not_arrived",
+    "troubleshooting_cant_receive_otp",
+}
+
+
+def _is_faq_backed_ts(sub_type: str) -> bool:
+    return sub_type in _FAQ_BACKED_TS_SUBTYPES
 
 TROUBLESHOOTING_SYSTEM_PROMPT = {
     "th": (
@@ -418,48 +438,11 @@ def handle_message(
 
     # ── Path execution ─────────────────────────────────────────────────────────
 
-    # Pinned-FAQ shortcut — fires whenever a troubleshooting_* label has a
-    # registered article in _TROUBLESHOOTING_FAQ_TITLES, regardless of is_new
-    # or active context. This guarantees the canonical article (text + image)
-    # for these well-known scenarios; otherwise BGE/LLM can drift toward an
-    # unrelated article on followups or polluted catalogs.
-    pinned_title = _TROUBLESHOOTING_FAQ_TITLES.get(decision.template_key)
-    if pinned_title and not image_situation:
-        pinned = _find_article_by_title(tenant_id, language, pinned_title)
-        if pinned:
-            from pipeline.answer_generator import GeneratedAnswer
-            _logger.info(
-                f"[orchestrator] pinned label={decision.template_key!r} → {pinned_title!r} "
-                f"(image={'yes' if pinned.image_urls else 'no'}, is_new={decision.is_new})"
-            )
-            trace.set_route(
-                route=str(decision.route), reason=f"pinned:{decision.template_key}",
-                label=decision.template_key, is_new=decision.is_new,
-            )
-            trace.set_retrieval(
-                query_used=f"[pinned] {pinned_title}",
-                collection=f"{tenant_id}_{language}",
-                documents=[pinned],
-            )
-            answer_obj = GeneratedAnswer(
-                text=pinned.answer,
-                grounding_score=1.0,
-                was_escalated=False,
-                route_taken=str(decision.route),
-                image_urls=pinned.image_urls,
-            )
-            save_faq_context(tenant_id, user_id, question=message,
-                             retrieved_docs=[pinned.answer], answer=answer_obj.text)
-            ac.save_faq_context(tenant_id, user_id, topic=decision.template_key,
-                                remark=message, last_user_need=message)
-            save_turn(tenant_id, user_id, language, message, answer_obj.text)
-            touch_session(tenant_id, user_id)
-            update_rolling_summary_async(tenant_id, user_id, language, message, answer_obj.text)
-            trace.set_answer(text=answer_obj.text, grounding_score=1.0, was_escalated=False)
-            trace.flush()
-            return MessageResult(
-                answer=answer_obj.text, image_urls=answer_obj.image_urls, was_escalated=False,
-            )
+    # NOTE: the top-level pinned-FAQ shortcut for troubleshooting_* labels
+    # was removed. The pin still fires inside `_run_faq` (called from
+    # `_run_faq_backed_ts`), but the answer now flows through the
+    # troubleshooting branch so the confirmation/recheck/handoff scaffolding
+    # wraps it — matching the UX of `troubleshooting_withdrawal`.
 
     # LLM says this is a followup on the same active topic
     if not decision.is_new and decision.route not in (Route.CHITCHAT, Route.MISSING_INFO):
@@ -611,15 +594,63 @@ def handle_message(
 
 # ── Pipeline sub-handlers ────────────────────────────────────────────────��────
 
+def _run_faq_backed_ts(
+    message, language, tenant_id, user_id, emp_id,
+    sub_type, decision, redis_history, summary, trace,
+    reason_prefix: str = "new",
+):
+    """Answer-source = pinned FAQ article; scaffolding = troubleshooting flow.
+
+    Used for sub_types listed in `_FAQ_BACKED_TS_SUBTYPES`. The pinned-article
+    shortcut in `_run_faq` keys off `decision.template_key` and `is_new=True`,
+    so we force is_new=True on the proxy decision — both fresh asks and
+    rechecks deliver the same canonical answer. The outer orchestrator then
+    appends the confirmation prompt and saves `awaiting_confirmation`, giving
+    the user the same retry/handoff UX as the withdrawal flow.
+    """
+    proxy_decision = RouteDecision(
+        route=Route.FAQ,
+        reason=f"{reason_prefix}: {decision.reason}",
+        confidence=getattr(decision, "confidence", 1.0),
+        template_key=sub_type,
+        search_query=getattr(decision, "search_query", "") or message,
+        is_new=True,  # force pinned-article path
+    )
+    answer = _run_faq(
+        message, language, tenant_id, user_id, proxy_decision,
+        redis_history, summary, trace,
+    )
+    trace.set_troubleshooting(
+        employee_id=emp_id, root_cause="ok", tools_used=["faq_pinned"],
+    )
+    ac.save_troubleshooting_context(
+        tenant_id, user_id,
+        topic=_TS_TOPIC.get(sub_type, sub_type),
+        sub_type=sub_type,
+        remark=message, employee_id=emp_id, last_root_cause="ok",
+    )
+    return answer
+
+
 def _run_troubleshooting_recheck(
     message, language, tenant_id, user_id, emp_id,
     active_ctx, decision, redis_history, summary, trace,
     access_token: str = "",
 ):
-    from agent.planner import run_troubleshooting_agent
     recheck_emp_id  = (active_ctx or {}).get("employee_id") or emp_id
     recheck_subtype = (active_ctx or {}).get("sub_type") or decision.template_key
 
+    # FAQ-backed sub_types have no live tooling — recheck = re-deliver the
+    # pinned FAQ article so the user sees the same canonical answer.
+    if _is_faq_backed_ts(recheck_subtype):
+        return _run_faq_backed_ts(
+            message, language, tenant_id, user_id, recheck_emp_id,
+            sub_type=recheck_subtype, decision=decision,
+            redis_history=redis_history, summary=summary, trace=trace,
+            reason_prefix="recheck",
+        )
+
+    from agent.planner import run_troubleshooting_agent
     trace.set_route(route="Route.TROUBLESHOOTING", reason=f"recheck: {decision.reason}", is_new=False)
     agent_result = run_troubleshooting_agent(
         employee_id=recheck_emp_id, issue=message, language=language,
@@ -654,6 +685,16 @@ def _run_troubleshooting_new(
     decision, redis_history, summary, trace,
     access_token: str = "",
 ):
+    # FAQ-backed sub_types: answer comes from the pinned FAQ article, but
+    # the troubleshooting scaffolding still wraps it.
+    if _is_faq_backed_ts(decision.template_key):
+        return _run_faq_backed_ts(
+            message, language, tenant_id, user_id, emp_id,
+            sub_type=decision.template_key, decision=decision,
+            redis_history=redis_history, summary=summary, trace=trace,
+            reason_prefix="new",
+        )
+
     from agent.planner import run_troubleshooting_agent
     trace.set_route(route=str(decision.route), reason=decision.reason, label=decision.template_key, is_new=decision.is_new)
     agent_result = run_troubleshooting_agent(
@@ -812,9 +853,8 @@ _QUERY_REWRITE_SYSTEM = (
 )
 # Troubleshooting recheck loop:
 #   "ยังไม่ได้" attempt 1 → recheck #1
-#   "ยังไม่ได้" attempt 2 → recheck #2
-#   "ยังไม่ได้" attempt 3 → escalate to human (handoff summary)
-MAX_TROUBLESHOOTING_RETRIES = 3
+#   "ยังไม่ได้" attempt 2 → recheck #2 + surface "ต้องการโอนไปให้เจ้าหน้าที่ช่วย" option
+MAX_TROUBLESHOOTING_RETRIES = 2
 
 _REWRITE_SCORE_THRESHOLD   = 0.35
 _LLM_RERANK_GRAY_LOW       = 0.55   # below this → top-3 are too weak to LLM-rerank;

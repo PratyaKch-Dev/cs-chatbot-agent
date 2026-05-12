@@ -53,16 +53,25 @@ class ContextResolution:
 # ── Word lists ────────────────────────────────────────────────────────────────
 
 _YES_WORDS = {
-    "ได้แล้ว", "โอเค", "ok", "ขอบคุณ", "ขอบคุณมาก", "ขอบใจ",
-    "ขอบคุณค่ะ", "ขอบคุณครับ", "เรียบร้อย", "แก้ได้แล้ว",
-    "solved", "thank", "thanks", "resolved", "done",
-    # removed "ได้เลย" — appears as substring in "ยังไม่ได้เลย" → false positive
-}
-
-_NO_WORDS = {
-    "ยังไม่ได้", "ยังมีปัญหา", "ยังพบปัญหา", "ยังไม่ได้เลย", "ยังไม่แก้",
-    "ยังคงเป็นอยู่", "ไม่ได้", "ยังเป็นอยู่", "ไม่หาย", "พบปัญหา",
-    "still", "still not", "not working", "not resolved", "still have",
+    # Thai — resolved / acknowledged
+    "ได้แล้ว", "ทำได้", "ทำได้แล้ว", "แก้ได้แล้ว", "ใช้ได้แล้ว",
+    "เจอแล้ว", "หายแล้ว",
+    "สำเร็จ", "สำเร็จแล้ว",
+    "เรียบร้อย", "เรียบร้อยแล้ว",
+    "เคลียร์",
+    "โอเค", "โอเคแล้ว", "ok", "okay",
+    "ขอบคุณ", "ขอบคุณมาก", "ขอบใจ", "ขอบคุณค่ะ", "ขอบคุณครับ",
+    # English — resolved / acknowledged
+    "solved", "resolved", "done", "fixed", "works", "it works", "got it",
+    "all good", "thank", "thanks",
+    # NOTE on substring matches (only fires when message <= 20 chars):
+    # - "ได้แล้ว" also appears in "ทำไม่ได้แล้ว" (could not do anymore) — known
+    #   trade-off; the orchestrator's followup branch + active-context router
+    #   catches the case in practice. Don't add more "X ได้แล้ว" variants
+    #   (redundant with "ได้แล้ว").
+    # - "เสร็จ" / "เสร็จแล้ว" deliberately omitted — collides with
+    #   "ยังไม่เสร็จ" → false positive.
+    # - "ได้เลย" deliberately omitted — collides with "ยังไม่ได้เลย".
 }
 
 _END_WORDS = _YES_WORDS | {
@@ -158,13 +167,6 @@ def _is_yes(message: str) -> bool:
     if not _is_pure_signal(msg):
         return False
     return any(w in msg for w in _YES_WORDS)
-
-
-def _is_no(message: str) -> bool:
-    msg = message.strip().lower()
-    if not _is_pure_signal(msg):
-        return False
-    return any(w in msg for w in _NO_WORDS)
 
 
 def _is_end(message: str) -> bool:
